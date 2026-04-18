@@ -929,22 +929,30 @@
     <div class="modal-body">
       <p>That serial port didn't respond to our identity probe.</p>
       <div class="alert alert-secondary small mb-2">
-        <div class="fw-semibold mb-1"><i class="bi bi-list-check me-1"></i>Check the picker</div>
-        Pick the entry labelled <b class="text-body">P780BT</b> or <b class="text-body">JL_SPP</b>.
+        <div class="fw-semibold mb-1"><i class="bi bi-list-check me-1"></i>If you haven't connected yet</div>
+        In the picker, pick the entry labelled <b class="text-body">P780BT</b> or <b class="text-body">JL_SPP</b>.
         Skip anything labelled <i>Peripheral Bluetooth</i> or <i>Standard Serial over Bluetooth</i>.
       </div>
-      <div class="alert alert-secondary small mb-0">
-        <div class="fw-semibold mb-1"><i class="bi bi-apple me-1"></i>On macOS (reconnect)</div>
-        If you already picked the right entry, this is a known macOS Web Serial
-        quirk — the <code>/dev/tty.*</code> node can get stuck after a
-        disconnect. We've already released our grant on it, so clicking
-        <b>Try&nbsp;again</b> will reopen the picker and rebuild the port from
-        scratch. If even that doesn't help, quit Chrome completely
-        (<kbd>⌘</kbd>+<kbd>Q</kbd>) and reopen, or toggle Bluetooth off/on in
-        the menu bar.
+      <div class="alert alert-warning small mb-0">
+        <div class="fw-semibold mb-1"><i class="bi bi-apple me-1"></i>On macOS after a disconnect</div>
+        This is a known Chrome + macOS Web Serial bug — the Bluetooth SPP
+        tty node gets stuck silent after a close+reopen. Chrome-side
+        resets (<code>port.forget()</code>, picker re-selection) don't
+        clear it. Reliable fixes:
+        <ul class="mb-1 mt-1 ps-4">
+          <li><b>Un-pair and re-pair the printer</b> in
+            <a href="x-apple.systempreferences:com.apple.Bluetooth" class="link-warning">System Settings → Bluetooth</a>
+            — this forces macOS to rebuild the tty node.</li>
+          <li>Or fully quit Chrome (<kbd>⌘</kbd>+<kbd>Q</kbd>) and reopen.</li>
+          <li>Or toggle Bluetooth off/on in the menu bar.</li>
+        </ul>
       </div>
     </div>
-    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button><button type="button" class="btn btn-primary" id="wrongEndpointRetry"><i class="bi bi-arrow-repeat me-1"></i> Try again</button></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      <a href="x-apple.systempreferences:com.apple.Bluetooth" class="btn btn-outline-warning"><i class="bi bi-apple me-1"></i> Open Bluetooth Settings</a>
+      <button type="button" class="btn btn-primary" id="wrongEndpointRetry"><i class="bi bi-arrow-repeat me-1"></i> Try again</button>
+    </div>
   </div></div>
 </div>
 

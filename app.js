@@ -998,12 +998,14 @@ async function verifyPrinterIdentity() {
         window.showToast(reason, 'error');
       }
     } catch {}
-    // Use forget() instead of disconnect() so the next reconnect
-    // attempt rebuilds the OS-level tty node from scratch — works
-    // around the macOS BT-SPP "zombie port" bug where a straight
-    // close+reopen keeps the broken state and the printer appears
-    // silent even though it's responding fine on other platforms.
-    try { link.forget(); } catch {}
+    // Plain disconnect. We tried `link.forget()` here to programmatically
+    // reset macOS's zombie BT-SPP tty after a reconnect — it only drops
+    // Chrome's grant, it does NOT tell macOS to rebuild /dev/tty.*, so
+    // the broken state persists through the next requestPort(). The
+    // only working workaround is user-driven (un-pair + re-pair in
+    // System Settings, or full-quit Chrome); the modal links to the
+    // Bluetooth pane directly.
+    try { link.disconnect(); } catch {}
   }
 }
 
