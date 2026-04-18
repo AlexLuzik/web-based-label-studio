@@ -595,13 +595,42 @@ btspp && data.data matches "^1f11"    # requests
 
 ---
 
-## 13. Reference files
+## 13. How this document was produced
 
-Decompiled SDK sources live under `printmaster_src/sources/com/project/aimotech/printer/`:
+This spec was reconstructed from two data sources, consulted privately
+during reverse-engineering and **not redistributed** as part of this
+repository. If you want to reproduce the work, capture your own
+material the same way.
+
+### Bluetooth HCI capture
+
+- **Tool:** Android Developer Options → *Enable Bluetooth HCI snoop
+  log*, plus `adb bugreport` afterwards to extract it.
+- **What it gives you:** a Wireshark-compatible `btsnoop_hci.log`
+  containing every HCI / L2CAP / RFCOMM frame exchanged between the
+  phone and the printer during a session.
+- **Recording methodology:** run one action at a time in the vendor
+  PrintMaster app (connect → battery query → paper-state query →
+  cartridge read → single-label print), stopping the capture between
+  operations, so each request/response pair can be attributed
+  unambiguously. A couple of multi-label jobs recorded separately
+  reveal the `PRINT_PAUSE` / `PRINT_PAGER` framing.
+- **Wireshark display filters** used to slice the capture are listed in
+  [§12](#12-wireshark-filters).
+
+### Decompiled vendor SDK (reference only)
+
+The EazeID PrintMaster Android app (package
+`com.project.aimotech.printmaster`, v5.18.0.12) was pulled with `adb`,
+split APKs merged, and the base APK decompiled with **jadx**. The
+resulting Java tree was read to cross-reference observed byte patterns
+against symbolic command / response names. Files that mattered the
+most:
 
 ```
+com/project/aimotech/printer/
 ├── Printer.java              # abstract base API class
-├── QuinPrinter.java          # common implementation (~1500 lines, parser starts at line 809)
+├── QuinPrinter.java          # common implementation (parser at ~line 809)
 ├── P780BTPrinter.java        # P780BT specifics (~65 lines)
 ├── P780BTPROPrinter.java     # PRO variant
 ├── InsGet.java               # GET command codes
@@ -609,19 +638,19 @@ Decompiled SDK sources live under `printmaster_src/sources/com/project/aimotech/
 ├── InsOther.java             # miscellaneous
 ├── InsProcessor.java         # status bit fields
 ├── PrinterKit.java           # SDK utility methods
-├── PrinterInfo.java          # global flags / state
-└── ~80 other *Printer.java   # additional Aimotech models
+└── PrinterInfo.java          # global flags / state
 ```
 
-Project artifacts (in the repository root):
+Plus ~80 other `*Printer.java` siblings for other Aimotech models (D30,
+P12, P780BT PRO, etc.) that confirmed which parts of the protocol are
+model-specific and which are shared.
 
-- `bugreport.zip` — Android bugreport (contains btsnoop)
-- `btsnoop_hci.log` — Wireshark-compatible capture
-- `EXPORT.txt`, `EXPORT2.txt` — pre-dissected packet dumps
-- `printmaster_apk/base.apk` — decompilable APK (~122 MB)
-- `printmaster_src/` — decompiled Java (~30 k files)
-- `printer_info.txt` — quick summary
-- `btsnoop_path.txt` — useful search paths
+> **None of the decompiled sources, APK binaries or HCI captures are
+> included in this repository.** They belong to their respective rights
+> holders; only the factual observations derived from them (byte
+> tables, payload layouts, firmware quirks) are documented here. See
+> the [Legal & fair-use notice](#legal--fair-use-notice) for the U.S.
+> legal basis for the reverse-engineering.
 
 ---
 
