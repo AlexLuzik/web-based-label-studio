@@ -1987,6 +1987,25 @@ function buildElementsList() {
         buildElementsList();
       } else {
         renderPreview();
+        // Counter elements carry a "Generates N labels: first → last"
+        // summary line in the inspector — refresh it in place when any
+        // counter-related field changes, so prefix/suffix/start/step/
+        // count/padLen edits update the live preview without rebuilding
+        // the whole row (which would steal focus from the input the
+        // user is still typing into).
+        if (el.type === 'counter' &&
+            ['prefix', 'suffix', 'startNum', 'step', 'count', 'padLen'].includes(key)) {
+          const row = inp.closest('.element-row');
+          const box = row && row.querySelector('.counter-preview');
+          if (box) {
+            const lastIdx  = Math.max(0, (el.count | 0) - 1);
+            const firstPrev = escHtml(elementText(el, 0));
+            const lastPrev  = escHtml(elementText(el, lastIdx));
+            box.innerHTML =
+              `Generates <b>${el.count | 0}</b> labels: <code>${firstPrev}</code>` +
+              ` <i class="bi bi-arrow-right mx-1"></i> <code>${lastPrev}</code>`;
+          }
+        }
       }
     };
     inp.addEventListener('input', handler);
@@ -2093,7 +2112,7 @@ function renderElementEditor(el, idx) {
     body = `
       <div class="row g-2">
         <div class="col-12">
-          <div class="small text-body-secondary mb-1">Generates <b>${el.count | 0}</b> labels: <code>${firstPreview}</code> <i class="bi bi-arrow-right mx-1"></i> <code>${lastPreview}</code></div>
+          <div class="small text-body-secondary mb-1 counter-preview">Generates <b>${el.count | 0}</b> labels: <code>${firstPreview}</code> <i class="bi bi-arrow-right mx-1"></i> <code>${lastPreview}</code></div>
         </div>
         <div class="col-6">
           <label class="form-label small mb-0">Prefix</label>
