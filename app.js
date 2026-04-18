@@ -2679,7 +2679,11 @@ function canvasForPrint(src) {
 // Resolves with the payload bytes, or rejects after `timeoutMs`.
 function waitForTag(expectedTag, timeoutMs = 2500) {
   return new Promise((resolve, reject) => {
-    const link = link;
+    // `link` comes from the outer module scope via closure. (Earlier
+    // code had `const link = link;` left over from a window.serialLink
+    // → link rename; that shadowed the outer binding and tripped the
+    // Temporal Dead Zone, so waitForTag always rejected instantly and
+    // the real frame arrived outside this promise.)
     if (!link || !link.isOpen) { reject(new Error('not connected')); return; }
     const originalOnFrame = link.parser.onFrame;
     const timer = setTimeout(() => {
@@ -2836,7 +2840,7 @@ async function printQueue() {
     const INTER_CHUNK_MS = 5;    // tiny breathing room between chunks
     const INTER_LABEL_MS = 180;  // let the head finish a label before the next
 
-    const link = link;
+    // `link` is the module-scope SerialLink instance (closure).
 
     // Head: (optional PAPER_TYPE) + INIT_PRINTER
     const head = [];
