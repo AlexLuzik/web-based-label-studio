@@ -935,16 +935,24 @@
       </div>
       <div class="alert alert-warning small mb-0">
         <div class="fw-semibold mb-1"><i class="bi bi-apple me-1"></i>On macOS after a disconnect</div>
-        This is a known Chrome + macOS Web Serial bug — the Bluetooth SPP
-        tty node gets stuck silent after a close+reopen. Chrome-side
-        resets (<code>port.forget()</code>, picker re-selection) don't
-        clear it. Reliable fixes:
+        This is a <b>macOS-level bug in <code>bluetoothd</code></b> that affects
+        <i>every</i> app using Bluetooth SPP (not just this one, not just
+        Chrome) — after a disconnect the RFCOMM channel state stays
+        broken and the port opens but routes no data. Nothing the
+        browser can do clears it; the Web Serial spec has no hook for
+        it. Pick whichever of these is least annoying for you:
         <ul class="mb-1 mt-1 ps-4">
-          <li><b>Un-pair and re-pair the printer</b> in
-            <a href="x-apple.systempreferences:com.apple.Bluetooth" class="link-warning">System Settings → Bluetooth</a>
-            — this forces macOS to rebuild the tty node.</li>
-          <li>Or fully quit Chrome (<kbd>⌘</kbd>+<kbd>Q</kbd>) and reopen.</li>
-          <li>Or toggle Bluetooth off/on in the menu bar.</li>
+          <li><b>Fastest (if you have <a href="https://formulae.brew.sh/formula/blueutil" class="link-warning">blueutil</a>):</b> in Terminal,
+            <code>blueutil --disconnect &lt;mac&gt; &amp;&amp; blueutil --connect &lt;mac&gt;</code>
+            — re-cycles just this device, no sudo.</li>
+          <li><b>Reliable, no extra tools:</b>
+            <a href="x-apple.systempreferences:com.apple.Bluetooth" class="link-warning">System Settings → Bluetooth</a> →
+            un-pair the printer → pair it again.</li>
+          <li><b>Nuclear option</b> (needs sudo, restarts the BT daemon, every BT
+            peripheral momentarily disconnects): <code>sudo pkill bluetoothd</code></li>
+          <li>Or fully quit Chrome (<kbd>⌘</kbd>+<kbd>Q</kbd>) and reopen — Chrome
+            dropping its file descriptors nudges <code>bluetoothd</code> to rebuild
+            the channel.</li>
         </ul>
       </div>
     </div>
