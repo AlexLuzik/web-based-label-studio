@@ -1,0 +1,1162 @@
+/* P780BT Reader — custom styles on top of Bootstrap 5 */
+
+:root {
+  --log-bg: #0b0f14;
+  --log-fg: #e6edf3;
+  --log-tx: #79b8ff;
+  --log-rx: #85e89d;
+  --log-frame: #d2a8ff;
+  --log-error: #f97583;
+  --log-info: #8b949e;
+
+  --accent-start: #6366f1;
+  --accent-end:   #0ea5e9;
+  --surface-1: rgba(255, 255, 255, 0.02);
+  --surface-2: rgba(255, 255, 255, 0.04);
+}
+
+html, body {
+  min-height: 100%;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(99,102,241,.12), transparent 50%),
+    radial-gradient(900px 500px at 100% 0%, rgba(14,165,233,.10), transparent 50%),
+    var(--bs-tertiary-bg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+body > main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+body > main > footer {
+  margin-top: auto !important;   /* override any Bootstrap mt-* on the footer */
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+
+/* ============================================================ */
+/* Navbar                                                       */
+/* ============================================================ */
+.navbar {
+  backdrop-filter: saturate(140%) blur(12px);
+  background: linear-gradient(180deg, rgba(23,24,28,.92), rgba(17,18,22,.92)) !important;
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  padding-top: .6rem;
+  padding-bottom: .6rem;
+}
+.navbar-brand {
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.navbar-brand .bi-printer-fill {
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 1.25rem;
+}
+
+/* View pills inside navbar */
+.view-nav .nav-link {
+  color: var(--bs-body-color);
+  border-radius: .5rem;
+  font-weight: 500;
+  padding: .35rem .75rem;
+  transition: all .12s ease;
+}
+.view-nav .nav-link:hover:not(.active) {
+  background: rgba(255,255,255,.05);
+}
+.view-nav .nav-link.active {
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  color: #fff;
+  box-shadow: 0 4px 12px -4px rgba(99,102,241,.5);
+}
+
+/* ------------------------------------------------------------------
+ * `.navbar-desktop-only` — hide below the navbar-expand-lg breakpoint.
+ * Used on the desktop inline action buttons (help / Disconnect / gear)
+ * in the right cluster. We can't use Bootstrap's `d-none d-lg-inline-flex`
+ * combo here because the `.connected-only` runtime toggle also operates
+ * on `d-none`, and removing `d-none` on connect would make these buttons
+ * appear on mobile (where they should stay hidden; the collapse has the
+ * equivalents). This class is responsive-only, independent of the
+ * connection-state `d-none` toggle.
+ * ------------------------------------------------------------------ */
+@media (max-width: 991.98px) {
+  .navbar-desktop-only { display: none !important; }
+}
+
+/* ------------------------------------------------------------------
+ * Override for Bootstrap's `.navbar-expand-lg .navbar-collapse`, which
+ * sets `display: flex !important` at ≥992px. Our `.connected-only`
+ * runtime toggle adds `.d-none` to hide the collapse panel pre-connect,
+ * but `.d-none` has only ONE class of specificity vs Bootstrap's TWO —
+ * so without this rule the nav pills stay visible on desktop even when
+ * the user is disconnected. This selector matches three classes (navbar,
+ * navbar-collapse, d-none) and therefore wins the specificity tie.
+ * ------------------------------------------------------------------ */
+.navbar .navbar-collapse.d-none { display: none !important; }
+
+/* ------------------------------------------------------------------
+ * Navbar burger toggler — dark theme polish.
+ * Bootstrap's default toggler-icon is a dark chevron SVG; in our dark
+ * theme we swap it for a light stroke so it's visible on the navbar.
+ * ------------------------------------------------------------------ */
+.navbar-toggler {
+  border-color: rgba(255,255,255,.15);
+  padding: .35rem .55rem;
+}
+.navbar-toggler:focus {
+  box-shadow: 0 0 0 .15rem rgba(99,102,241,.3);
+}
+.navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.85)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+/* ------------------------------------------------------------------
+ * Mobile collapse panel (<992px, below navbar-expand-lg breakpoint).
+ * Drops down below the top row as a Bootstrap collapse. Styled so it
+ * matches the navbar background, has a subtle border-top separator,
+ * and sits on top of page content while sticky-top keeps the top row
+ * pinned. Pills inside the collapse become tap-friendly stacked tabs.
+ * ------------------------------------------------------------------ */
+@media (max-width: 991.98px) {
+  .navbar .navbar-collapse {
+    /* Paint the full-width panel in the same navbar surface so it looks
+     * like a single flyout, not a transparent band with content showing
+     * through. Negative margin pulls it flush past the container gutter. */
+    background: linear-gradient(180deg, rgba(23,24,28,.98), rgba(17,18,22,.98));
+    margin: .6rem calc(-1 * var(--bs-gutter-x, 1.5rem) / 2) -.6rem;
+    padding: .75rem 1rem 1rem;
+    border-top: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+  /* Tap-friendly stacked pills — ≥44px tall per Apple HIG / Material. */
+  .navbar .view-nav .nav-link {
+    padding: .75rem 1rem;
+    font-size: 1rem;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    text-align: left;
+  }
+  /* Full-width action buttons in the stacked cluster for easier tapping. */
+  .navbar .navbar-actions .btn {
+    min-height: 44px;
+    justify-content: flex-start;
+    display: flex;
+    align-items: center;
+  }
+  /* The shortcuts help button is btn-sm on desktop — restore normal sizing
+   * on mobile so it matches the other stacked buttons. */
+  .navbar .navbar-actions .btn.btn-sm {
+    padding: .5rem .75rem;
+    font-size: 1rem;
+  }
+}
+
+/* ============================================================ */
+/* Status badge & connect button                                */
+/* ============================================================ */
+#statusBadge {
+  padding: .5em .8em;
+  font-weight: 500;
+}
+#statusBadge .bi-circle-fill {
+  font-size: .7rem;
+}
+.badge.text-bg-success .bi-circle-fill {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+#btnConnect {
+  font-weight: 500;
+  padding: .45rem 1rem;
+}
+#btnConnect.btn-primary {
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  border: none;
+  box-shadow: 0 4px 12px -4px rgba(99,102,241,.5);
+}
+#btnConnect.btn-primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+/* ============================================================ */
+/* Write-mode switch (now in Advanced offcanvas header)         */
+/* ============================================================ */
+#writeMode {
+  background-color: rgba(255,255,255,.1);
+  border-color: rgba(255,255,255,.2);
+  cursor: pointer;
+}
+#writeMode:checked {
+  background-color: #f59e0b;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 .15rem rgba(245,158,11,.25);
+}
+
+/* ============================================================ */
+/* Printer status strip                                         */
+/* ============================================================ */
+.printer-status-strip {
+  position: sticky;
+  top: 56px; /* under the navbar */
+  z-index: 1020;
+  background: linear-gradient(180deg, rgba(17,18,22,.95), rgba(15,16,20,.95));
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  backdrop-filter: saturate(140%) blur(10px);
+  color: var(--bs-body-color);
+}
+.printer-status-strip.show { display: block; }
+.strip-divider {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,.1);
+}
+
+/* ============================================================ */
+/* Hero section (shown when disconnected)                       */
+/* ============================================================ */
+.hero-section {
+  max-width: 620px;
+  margin-inline: auto;
+}
+.hero-icon {
+  width: 96px;
+  height: 96px;
+  margin-inline: auto;
+  border-radius: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(99,102,241,.15), rgba(14,165,233,.15));
+  border: 1px solid rgba(99,102,241,.25);
+  box-shadow: 0 10px 40px -15px rgba(99,102,241,.5);
+}
+.hero-icon i {
+  font-size: 3rem;
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-cta {
+  padding: .75rem 1.75rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  border: none;
+  box-shadow: 0 8px 24px -8px rgba(99,102,241,.6);
+}
+.hero-cta:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.hero-picker-hint {
+  max-width: 520px;
+  background: rgba(255,255,255,.03);
+  border-color: rgba(255,255,255,.08);
+}
+.hero-picker-hint .btn-link {
+  color: var(--accent-end);
+  text-decoration: none;
+}
+.hero-picker-hint .btn-link:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================ */
+/* Form controls (dark theme)                                   */
+/* ============================================================ */
+.input-group-sm .form-control,
+.input-group-sm .form-select,
+.form-control, .form-select {
+  color-scheme: dark;
+}
+.input-group-sm .form-control,
+.input-group-sm .form-select {
+  background: rgba(20, 22, 28, .85);
+  border-color: rgba(255,255,255,.12);
+  color: #f1f5f9;
+}
+.input-group-sm .form-control::placeholder {
+  color: rgba(255,255,255,.35);
+}
+.input-group-sm .form-control:focus,
+.input-group-sm .form-select:focus {
+  background: rgba(30, 33, 40, .95);
+  border-color: rgba(99,102,241,.6);
+  box-shadow: 0 0 0 .15rem rgba(99,102,241,.25);
+  color: #ffffff;
+}
+
+/* <option> inside select — dark background and contrasting text */
+.form-select option,
+.form-select optgroup {
+  background-color: #1a1d24;
+  color: #f1f5f9;
+  padding: .35rem .6rem;
+}
+.form-select option:checked {
+  background-color: rgba(99, 102, 241, .3);
+  color: #ffffff;
+}
+
+/* Custom select arrow for the dark theme */
+.form-select {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23cbd5e1'%3e%3cpath d='M3.204 5L8 10.481 12.796 5H3.204z'/%3e%3c/svg%3e");
+  background-position: right .5rem center;
+  background-size: 14px;
+}
+
+/* Light theme — restore default colors */
+[data-bs-theme="light"] .input-group-sm .form-control,
+[data-bs-theme="light"] .input-group-sm .form-select {
+  background: #ffffff;
+  color: #1f2937;
+  color-scheme: light;
+  border-color: #d1d5db;
+}
+[data-bs-theme="light"] .form-select option {
+  background: #ffffff;
+  color: #1f2937;
+}
+.input-group .btn-primary {
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  border: none;
+}
+.input-group .btn-primary:disabled {
+  background: rgba(255,255,255,.06);
+  color: var(--bs-secondary-color);
+}
+
+/* Action buttons (Maintenance accordion) */
+#actionButtons .btn {
+  transition: all .12s ease;
+}
+#actionButtons .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -4px rgba(0,0,0,.4);
+}
+
+/* Field labels */
+.form-label {
+  color: var(--bs-body-color);
+  opacity: .85;
+  font-weight: 500;
+}
+
+/* ============================================================ */
+/* Cards                                                        */
+/* ============================================================ */
+.card {
+  border: 1px solid rgba(255,255,255,.06);
+  background: linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,.01));
+  border-radius: .75rem;
+  position: relative;
+  overflow: hidden;
+}
+.card.shadow-sm {
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.card.shadow-sm:hover {
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,.35) !important;
+  border-color: rgba(255,255,255,.1);
+}
+.card-header {
+  background: rgba(255,255,255,.02);
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  font-weight: 500;
+  padding: .7rem 1rem;
+}
+.card-body {
+  padding: 1rem;
+}
+
+/* Watermark icon in the card corner */
+.card-watermark {
+  position: absolute;
+  right: -.25rem;
+  bottom: -.5rem;
+  font-size: 5rem;
+  line-height: 1;
+  opacity: .05;
+  pointer-events: none;
+  color: currentColor;
+}
+
+/* Colored border-start accent strips */
+.card.accent-primary { border-left: 3px solid var(--accent-start); }
+.card.accent-success { border-left: 3px solid #10b981; }
+.card.accent-warning { border-left: 3px solid #f59e0b; }
+.card.accent-info    { border-left: 3px solid var(--accent-end); }
+
+/* ============================================================ */
+/* Design & Print — Print card                                  */
+/* ============================================================ */
+@media (min-width: 1200px) {
+  .print-card {
+    position: sticky;
+    top: 110px;
+  }
+}
+.print-cta {
+  font-weight: 700;
+  letter-spacing: .3px;
+  padding: .85rem 1rem;
+  font-size: 1.15rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: none;
+  box-shadow: 0 8px 20px -8px rgba(16,185,129,.6);
+  transition: all .15s ease;
+}
+.print-cta:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 10px 24px -8px rgba(16,185,129,.8);
+  transform: translateY(-1px);
+}
+.print-cta:disabled {
+  background: rgba(255,255,255,.05);
+  box-shadow: none;
+  color: var(--bs-secondary-color);
+}
+
+/* ============================================================ */
+/* Label Designer                                               */
+/* ============================================================ */
+.elements-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.elements-empty {
+  background: rgba(255,255,255,.02);
+  border: 1px dashed rgba(255,255,255,.08);
+  border-radius: .5rem;
+}
+.element-row {
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: .5rem;
+  padding: .6rem .7rem;
+}
+.element-row:hover {
+  border-color: rgba(99,102,241,.3);
+  cursor: pointer;
+}
+.element-row.element-selected {
+  border-color: rgba(14,165,233,.7);
+  box-shadow: 0 0 0 2px rgba(14,165,233,.25);
+  background: rgba(14,165,233,.05);
+}
+.element-row.element-error {
+  border-color: rgba(239,68,68,.6);
+  background: rgba(239,68,68,.05);
+}
+.element-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+  font-size: .85rem;
+}
+.element-type {
+  font-weight: 500;
+}
+.element-index {
+  font-size: .65rem;
+  opacity: .7;
+}
+.element-body .form-label {
+  font-size: .7rem;
+  opacity: .7;
+  margin-bottom: 2px;
+}
+
+/* Preview canvas */
+.preview-wrap {
+  background: #1a1d24;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: .5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  display: flex;
+  justify-content: center;
+}
+#labelCanvas {
+  background: #ffffff;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 4px 20px -4px rgba(0,0,0,.5);
+  max-width: 100%;
+  cursor: default;
+  user-select: none;
+}
+#previewPxHint {
+  font-weight: 400;
+  font-size: .75rem;
+}
+
+/* Designer footer CTA row (Clear / Add-to-queue).
+ * Visually separates the action from the preview above so it reads as the
+ * next step in the workflow without competing with the Print card's CTA. */
+.designer-actions {
+  padding-top: .75rem;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.designer-actions .btn {
+  font-weight: 500;
+}
+
+/* ============================================================ */
+/* Queue                                                        */
+/* ============================================================ */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  /* Taller scroll area so more rows are visible before scrolling kicks in.
+   * Scroll still engages via overflow-y: auto for long queues. */
+  max-height: 460px;
+  overflow-y: auto;
+  overflow-x: hidden;        /* never scroll sideways — clip instead */
+}
+.queue-empty {
+  background: rgba(255,255,255,.02);
+  border: 1px dashed rgba(255,255,255,.08);
+  border-radius: .5rem;
+  /* Compact placeholder: small padding, no oversized icon/text.
+   * Override Bootstrap's py-3/py-4 utilities (which use !important)
+   * so the empty box stays short regardless of the markup variant. */
+  padding: .5rem .75rem !important;
+}
+.queue-empty .bi-inbox {
+  font-size: 1rem !important;   /* JS/markup inlines a larger size; shrink it */
+  display: inline-block !important;
+  margin-right: .35rem;
+  margin-bottom: 0 !important;
+  vertical-align: -.1em;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .55rem;
+  /* Guarantee a breathable, card-like row height regardless of thumbnail
+   * aspect ratio (short/tall labels should not collapse the row). */
+  min-height: 60px;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: .5rem;
+  /* Clip any stubborn overflow (e.g. a canvas sized by JS beyond the cap
+   * or a long label name) so the row never forces a horizontal scrollbar. */
+  overflow: hidden;
+  min-width: 0;
+}
+.queue-item:hover {
+  border-color: rgba(16,185,129,.4);
+}
+.q-thumb-wrap {
+  flex: 0 0 auto;
+  /* Cap the thumbnail column width — JS sizes the canvas in px, so we
+   * also override inline dimensions below to keep the row inside the card. */
+  max-width: 110px;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Positioned ancestor for the ×N counter-expansion badge (P1.9). */
+  position: relative;
+}
+.q-thumb-wrap canvas {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.2);
+  border-radius: 2px;
+  display: block;
+  /* Fixed display height keeps every row visually consistent regardless of
+   * label aspect ratio; width auto-scales to preserve the canvas aspect.
+   * !important overrides the inline width/height JS writes to the canvas. */
+  height: 48px !important;
+  width: auto !important;
+  max-width: 100% !important;
+  object-fit: contain;
+}
+.q-meta {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-width: 0;   /* let text-truncate children work inside a flex row */
+}
+.q-meta > div {
+  /* Truncate long label metadata rather than push siblings off-screen. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Per-item copies stepper inside the queue row.
+ * Compact to keep the row at a reasonable height even on narrow layouts. */
+.queue-item .q-copies {
+  flex: 0 0 auto;
+}
+.queue-item .q-copies .btn {
+  padding-left: .4rem;
+  padding-right: .4rem;
+}
+.queue-item .q-copies input[type="number"] {
+  width: 2.4rem;
+  padding-left: .2rem;
+  padding-right: .2rem;
+  /* Strip spinners — our +/- buttons are the stepper UI */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.queue-item .q-copies input[type="number"]::-webkit-outer-spin-button,
+.queue-item .q-copies input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.queue-item .q-del-btn {
+  flex: 0 0 auto;
+  padding-left: .4rem;
+  padding-right: .4rem;
+}
+
+/* ============================================================ */
+/* Cartridge color swatch                                       */
+/* ============================================================ */
+.color-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.2);
+  vertical-align: middle;
+}
+
+/* ============================================================ */
+/* Battery progress bar                                         */
+/* ============================================================ */
+.progress {
+  background: rgba(255,255,255,.05);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  border-radius: 999px;
+  transition: width .5s cubic-bezier(.4, 0, .2, 1), background .3s;
+}
+.progress-bar.bg-success {
+  background: linear-gradient(90deg, #10b981, #34d399) !important;
+}
+.progress-bar.bg-warning {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24) !important;
+}
+.progress-bar.bg-danger {
+  background: linear-gradient(90deg, #ef4444, #f87171) !important;
+}
+
+/* Material section — numeric fields */
+[data-field^="material_"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================ */
+/* Advanced offcanvas                                           */
+/* ============================================================ */
+.advanced-offcanvas {
+  width: 480px !important;
+  max-width: 100vw;
+  background: linear-gradient(180deg, rgba(17,18,22,.98), rgba(13,14,18,.98));
+  border-left: 1px solid rgba(255,255,255,.08);
+}
+.advanced-offcanvas .offcanvas-header {
+  border-bottom-color: rgba(255,255,255,.06) !important;
+}
+.advanced-offcanvas .accordion {
+  --bs-accordion-bg: transparent;
+  --bs-accordion-border-color: rgba(255,255,255,.06);
+  --bs-accordion-btn-bg: transparent;
+  --bs-accordion-active-bg: rgba(99,102,241,.08);
+  --bs-accordion-active-color: var(--bs-body-color);
+}
+.advanced-offcanvas .accordion-button {
+  background: transparent;
+  color: var(--bs-body-color);
+  font-weight: 500;
+  padding: .8rem 1rem;
+}
+.advanced-offcanvas .accordion-button:not(.collapsed) {
+  color: #fff;
+  background: rgba(99,102,241,.08);
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.06);
+}
+.advanced-offcanvas .accordion-button:focus {
+  box-shadow: 0 0 0 .15rem rgba(99,102,241,.3);
+}
+.advanced-offcanvas .accordion-item {
+  background: transparent;
+  border-color: rgba(255,255,255,.06);
+}
+
+/* Raw command buttons */
+#cmdButtons .btn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .45rem .7rem;
+  border-color: rgba(255,255,255,.1);
+  background: rgba(255,255,255,.015);
+  color: var(--bs-body-color);
+  position: relative;
+  padding-left: 1.4rem;
+  transition: all .12s ease;
+}
+#cmdButtons .btn::before {
+  content: '';
+  position: absolute;
+  left: .55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16,185,129,.6);
+}
+#cmdButtons .btn:has(.bi-upc-scan)::before {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245,158,11,.6);
+}
+#cmdButtons .btn:disabled::before {
+  background: #4b5563;
+  box-shadow: none;
+}
+#cmdButtons .btn:hover:not(:disabled) {
+  background: rgba(99,102,241,.12);
+  border-color: rgba(99,102,241,.5);
+  transform: translateX(2px);
+}
+#cmdButtons .btn .cmd-hex {
+  opacity: .5;
+  font-weight: 400;
+  font-size: 11px;
+}
+#cmdButtons .bi-upc-scan {
+  display: none;
+}
+
+/* READ ALL button */
+#btnReadAll {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: none;
+  font-weight: 600;
+  letter-spacing: .3px;
+  box-shadow: 0 4px 12px -4px rgba(16,185,129,.5);
+  transition: all .15s ease;
+}
+#btnReadAll:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 6px 18px -4px rgba(16,185,129,.7);
+  transform: translateY(-1px);
+}
+#btnReadAll:disabled {
+  background: rgba(255,255,255,.05);
+  box-shadow: none;
+}
+
+/* ============================================================ */
+/* Log                                                          */
+/* ============================================================ */
+.log-box {
+  background: var(--log-bg);
+  color: var(--log-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 0;
+  padding: .85rem 1rem !important;
+}
+.log-box::-webkit-scrollbar { width: 10px; height: 10px; }
+.log-box::-webkit-scrollbar-track { background: transparent; }
+.log-box::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.08);
+  border-radius: 5px;
+  border: 2px solid var(--log-bg);
+}
+.log-box::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.15); }
+.log-line { padding: 1px 0; }
+.log-line .log-ts  { color: var(--log-info); }
+.log-line.log-tx   { color: var(--log-tx); }
+.log-line.log-rx   { color: var(--log-rx); }
+.log-line.log-frame{ color: var(--log-frame); }
+.log-line.log-error{ color: var(--log-error); }
+.log-line.log-info { color: var(--log-info); }
+
+/* Highlight for a recently updated field */
+[data-field].flash {
+  animation: flash 800ms ease;
+}
+@keyframes flash {
+  0%   { background-color: rgba(88, 166, 255, .25); }
+  100% { background-color: transparent; }
+}
+
+/* NO PAPER / error indicators */
+.value-error { color: var(--bs-danger); }
+.value-warn  { color: var(--bs-warning); }
+.value-ok    { color: var(--bs-success); }
+
+/* Light theme — a bit more contrast */
+[data-bs-theme="light"] .log-box {
+  background: #f6f8fa;
+  color: #24292f;
+  --log-tx: #0969da;
+  --log-rx: #1a7f37;
+  --log-frame: #8250df;
+  --log-error: #cf222e;
+  --log-info: #57606a;
+}
+
+/* ============================================================ */
+/* Responsive tweaks                                            */
+/* ============================================================ */
+@media (max-width: 767px) {
+  /* .view-nav rule moved to the navbar-expand-lg collapse block (≤991.98px)
+   * where pills are stacked full-width inside the burger panel. */
+  .hero-icon { width: 80px; height: 80px; border-radius: 22px; }
+  .hero-icon i { font-size: 2.4rem; }
+  .advanced-offcanvas { width: 100vw !important; }
+}
+
+/* ============================================================ */
+/* Templates gallery                                            */
+/* ============================================================ */
+.template-card {
+  overflow: hidden;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.template-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,.45) !important;
+  border-color: rgba(99,102,241,.4);
+}
+.template-thumb-wrap {
+  background: repeating-conic-gradient(#222 0% 25%, #1a1d24 0% 50%) 0 / 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: .5rem;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.template-thumb {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 4px 14px -4px rgba(0,0,0,.5);
+  background: #fff;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.template-thumb-placeholder {
+  width: 100%;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+/* Modal — dark theme tweaks */
+.modal-content {
+  background: #1a1d24;
+  color: var(--bs-body-color);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.modal-header, .modal-footer {
+  border-color: rgba(255,255,255,.06);
+}
+.modal-body .form-control {
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.12);
+  color: #f1f5f9;
+}
+.modal-body .form-control:focus {
+  background: rgba(255,255,255,.06);
+  border-color: rgba(99,102,241,.6);
+  box-shadow: 0 0 0 .15rem rgba(99,102,241,.2);
+  color: #ffffff;
+}
+
+/* ============================================================ */
+/* Text style toggle row (B / I / U / S / shadow)               */
+/* ============================================================ */
+.text-style-toggles .btn {
+  min-width: 34px;
+  font-size: .9rem;
+  padding: .2rem .45rem;
+  border-color: rgba(255,255,255,.12);
+  color: var(--bs-body-color);
+  background: rgba(255,255,255,.02);
+}
+.text-style-toggles .btn-check:checked + .btn {
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 3px 10px -3px rgba(99,102,241,.5);
+}
+.text-style-toggles .btn:hover {
+  background: rgba(255,255,255,.06);
+}
+.text-style-toggles .btn-check:checked + .btn:hover {
+  filter: brightness(1.08);
+}
+
+/* ============================================================ */
+/* Icon picker (Bootstrap Icons)                                */
+/* ============================================================ */
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 6px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+.icon-picker-btn {
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px;
+  padding: 0;
+  color: var(--bs-body-color);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+  transition: background .1s ease, border-color .1s ease, transform .08s ease;
+}
+.icon-picker-btn:hover {
+  background: rgba(99,102,241,.15);
+  border-color: rgba(99,102,241,.5);
+  color: #c7d2fe;
+  transform: translateY(-1px);
+}
+.icon-picker-btn:active {
+  transform: translateY(0);
+}
+
+/* Inspector preview for the icon element */
+.icon-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: 22px;
+  color: var(--bs-body-color);
+}
+
+/* ============================================================ */
+/* P0.1 — Connect button (disconnect-mode outline-danger)       */
+/* ============================================================ */
+#btnConnect.btn-outline-danger {
+  background: transparent;
+  border-color: rgba(239,68,68,.55);
+  color: #fca5a5;
+  box-shadow: none;
+}
+#btnConnect.btn-outline-danger:hover {
+  background: rgba(239,68,68,.12);
+  color: #fecaca;
+}
+
+/* ============================================================ */
+/* P0.2 — Cartridge-width mismatch alert                        */
+/* ============================================================ */
+.cartridge-mismatch-alert {
+  background: rgba(245,158,11,.08);
+  border: 1px solid rgba(245,158,11,.35);
+  color: #fde68a;
+}
+.cartridge-mismatch-alert .btn-warning {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #1a1d24;
+  font-weight: 600;
+}
+
+/* ============================================================ */
+/* P0.4 — Axis diagram for the size row                         */
+/* ============================================================ */
+.size-axis-diagram {
+  flex: 0 0 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: .5rem;
+  padding: .5rem .85rem;
+}
+.sad-tape {
+  position: relative;
+  width: 90px;
+  height: 40px;
+  background: linear-gradient(180deg,#f1f5f9,#cbd5e1);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.3);
+}
+.sad-label-w, .sad-label-h {
+  position: absolute;
+  font-size: .6rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.sad-label-w {
+  top: -14px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: rgba(255,255,255,.7);
+}
+.sad-label-h {
+  left: -30px;
+  top: 50%;
+  transform: rotate(-90deg);
+  color: rgba(255,255,255,.55);
+  white-space: nowrap;
+}
+
+/* ============================================================ */
+/* P0.5 — Print-queue progress banner                           */
+/* ============================================================ */
+.print-progress {
+  margin-top: .5rem;
+  padding: .6rem .75rem;
+  background: rgba(16,185,129,.08);
+  border: 1px solid rgba(16,185,129,.25);
+  border-radius: .5rem;
+  color: #a7f3d0;
+}
+
+/* ============================================================ */
+/* P0.6 — Status-strip skeletons during READ ALL                */
+/* ============================================================ */
+#statusStrip.is-loading [data-field] {
+  display: inline-block;
+  min-width: 44px;
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.12) 50%, rgba(255,255,255,.05) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s linear infinite;
+  color: transparent;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================================ */
+/* P1.9 — Counter-expansion badge on queue thumbnails           */
+/* (The positioning context is declared on .q-thumb-wrap above.) */
+/* ============================================================ */
+.q-count-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(99,102,241,.9);
+  color: #fff;
+  font-size: .65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.3);
+}
+
+/* ============================================================ */
+/* P1.11 — Inspector X/Y/W/H unit suffix                        */
+/* ============================================================ */
+.unit-suffix {
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.12);
+  color: rgba(255,255,255,.5);
+  font-size: .7rem;
+  padding: 0 .4rem;
+}
+
+/* ============================================================ */
+/* P1.15 — Paper & cartridge stat strip                         */
+/* ============================================================ */
+.paper-stat {
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: .5rem;
+  padding: .6rem .85rem;
+}
+.paper-stat .ps-label {
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  margin-bottom: .2rem;
+}
+.paper-stat .ps-value {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+/* ============================================================ */
+/* P1.20 — Toast action button                                  */
+/* ============================================================ */
+.toast .toast-action {
+  font-weight: 600;
+  padding: .15rem .55rem;
+  font-size: .8rem;
+}
+
+/* ============================================================ */
+/* P1.21 — Shortcuts help popover                               */
+/* ============================================================ */
+.kbd-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .25rem .75rem;
+}
+.kbd-list dt { margin: 0; }
+.kbd-list dd { margin: 0; color: var(--bs-secondary-color); }
+.popover {
+  --bs-popover-bg: #1a1d24;
+  --bs-popover-header-bg: #111418;
+  --bs-popover-border-color: rgba(255,255,255,.08);
+}

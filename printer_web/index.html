@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="author" content="Oleksandr Luzin" />
+  <meta name="description" content="Web Serial controller for the P780BT Bluetooth thermal label printer — design labels, manage a print queue, and configure the device, all in the browser." />
+  <link rel="author" href="https://luzin.cc" />
+  <title>Web-based printing app for P780BT</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/bwip-js@4.5.0/dist/bwip-js-min.js" defer></script>
+</head>
+<body class="bg-body-tertiary">
+
+<!-- ========== NAVBAR ==========
+     Uses `navbar-expand-lg` so tablets in portrait (<992px) collapse into a
+     burger menu. The status badge stays outside the collapse so it's always
+     visible as a state indicator. The burger toggler is `.connected-only` so
+     nothing to toggle shows up pre-connect. -->
+<nav class="navbar navbar-expand-lg bg-body-secondary border-bottom sticky-top">
+  <div class="container-xxl gap-2">
+    <span class="navbar-brand d-flex align-items-center gap-2 me-2">
+      <i class="bi bi-printer-fill text-primary"></i>
+      <span>Web-based printing app</span>
+    </span>
+
+    <!-- Collapsible panel (pills only, middle of desktop row).
+         On mobile drops below as stacked vertical pills. On lg+ it sits
+         between the brand and the always-visible right cluster.
+         `.connected-only` keeps it hidden pre-connect. `order-lg-1` keeps
+         it in the middle on desktop when the right cluster below is after
+         it in source order. -->
+    <div class="collapse navbar-collapse connected-only d-none order-lg-1" id="navbarMain">
+
+      <!-- Primary view pills — `flex-lg-row` keeps them horizontal on desktop;
+           default flex-column stacks them as full-width tap targets on mobile. -->
+      <ul class="nav nav-pills view-nav gap-1 flex-column flex-lg-row mb-2 mb-lg-0" role="tablist" id="viewNav">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active w-100" id="nav-design-btn" data-bs-toggle="pill" data-bs-target="#view-design" type="button" role="tab">
+            <i class="bi bi-vector-pen me-1"></i> Design &amp; Print
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link w-100" id="nav-templates-btn" data-bs-toggle="pill" data-bs-target="#view-templates" type="button" role="tab">
+            <i class="bi bi-collection me-1"></i> Templates
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link w-100" id="nav-printer-btn" data-bs-toggle="pill" data-bs-target="#view-printer" type="button" role="tab">
+            <i class="bi bi-printer me-1"></i> Printer
+          </button>
+        </li>
+      </ul>
+
+      <!-- Mobile-only action cluster: Disconnect + Advanced stacked inside
+           the collapse panel below the pills. Hidden on lg+ where the
+           equivalents live in the always-visible right cluster below.
+           Note: Keyboard shortcuts help is desktop-only — a popover tied
+           to the `#btnShortcutsHelp` button in the right cluster. Touch
+           devices have no keyboard to shortcut, so it's omitted here. -->
+      <div class="navbar-actions d-lg-none d-flex flex-column align-items-stretch gap-2 mt-2 pt-2 border-top border-secondary-subtle">
+        <button type="button" class="btn btn-outline-danger" id="btnDisconnectMobile" title="Disconnect from printer">
+          <i class="bi bi-bluetooth-off me-1"></i>Disconnect
+        </button>
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-bs-toggle="offcanvas"
+                data-bs-target="#offcanvasAdvanced"
+                aria-label="Advanced">
+          <i class="bi bi-gear me-1"></i>Advanced
+        </button>
+      </div>
+    </div>
+
+    <!-- Right-side cluster (always visible on top row): status badge +
+         (on desktop) inline help/Disconnect/gear, + (on mobile) burger.
+         `ms-auto order-lg-2` puts it at the far right of the top row. -->
+    <div class="d-flex align-items-center gap-2 ms-auto order-lg-2">
+      <span id="statusBadge" class="badge text-bg-secondary">
+        <i class="bi bi-circle-fill me-1"></i><span id="statusText">disconnected</span>
+      </span>
+
+      <!-- Desktop-only inline action buttons (hidden on mobile — equivalents
+           live inside the collapse panel). `.connected-only` so they stay
+           hidden pre-connect. -->
+      <button type="button" class="btn btn-outline-secondary btn-sm connected-only d-none navbar-desktop-only" id="btnShortcutsHelp" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
+        <i class="bi bi-question-circle"></i>
+      </button>
+      <button id="btnDisconnect" type="button" class="btn btn-outline-danger connected-only d-none navbar-desktop-only" title="Disconnect from printer">
+        <i class="bi bi-bluetooth-off me-1"></i>Disconnect
+      </button>
+      <button type="button"
+              class="btn btn-outline-secondary connected-only d-none navbar-desktop-only"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#offcanvasAdvanced"
+              aria-label="Advanced"
+              title="Advanced">
+        <i class="bi bi-gear"></i>
+      </button>
+
+      <!-- Burger toggler — mobile only, connected-only. Hidden on lg+ by
+           Bootstrap's navbar-expand-lg rule. -->
+      <button class="navbar-toggler connected-only d-none"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#navbarMain"
+              aria-controls="navbarMain"
+              aria-expanded="false"
+              aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ========== PRINTER STATUS STRIP (sticky under navbar) ========== -->
+<div id="statusStrip" class="printer-status-strip border-bottom collapse" role="status" aria-live="polite">
+  <div class="container-xxl py-2 d-flex flex-wrap align-items-center gap-3 small">
+    <span class="d-flex align-items-center gap-2 fw-semibold">
+      <i class="bi bi-printer-fill text-primary"></i>
+      <span data-field="serial_number">—</span>
+    </span>
+    <span class="strip-divider"></span>
+    <span class="d-flex align-items-center gap-2" title="Battery">
+      <i class="bi bi-battery-half"></i>
+      <span data-field="battery">—</span>
+    </span>
+    <span class="strip-divider"></span>
+    <span class="d-flex align-items-center gap-2" title="Paper">
+      <i class="bi bi-file-earmark"></i>
+      <span data-field="paper_state">—</span>
+    </span>
+    <span class="strip-divider"></span>
+    <span class="d-flex align-items-center gap-2" title="Cover">
+      <i class="bi bi-door-closed"></i>
+      <span data-field="cover_state">—</span>
+    </span>
+    <span class="strip-divider"></span>
+    <span class="d-flex align-items-center gap-2" title="Cartridge">
+      <i class="bi bi-upc-scan"></i>
+      <span data-field="material_size">—</span>
+      <span class="text-body-secondary">·</span>
+      <span data-field="material_paper">—</span>
+      <span class="color-swatch ms-1" data-swatch="material_bg" title="Background"></span>
+    </span>
+  </div>
+</div>
+
+<main class="container-xxl py-3">
+
+  <!-- Unsupported banner (kept as-is) -->
+  <div id="unsupportedBanner" class="alert alert-warning d-none">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    Web Serial API is not supported by this browser. Open the page in <b>Chrome</b> or <b>Edge</b> (version &ge;89).
+  </div>
+
+  <!-- ========== HERO (shown when disconnected) ========== -->
+  <section id="hero" class="hero-section text-center py-5 my-3">
+    <div class="hero-icon mb-3">
+      <i class="bi bi-printer"></i>
+    </div>
+    <h1 class="h2 fw-bold mb-2">Connect your label printer</h1>
+    <p class="lead text-body-secondary mb-4">
+      Turn on your P780BT and pair it in your system Bluetooth settings, then click below.
+    </p>
+    <button type="button" class="btn btn-primary btn-lg hero-cta" id="btnConnect">
+      <i id="btnConnectIcon" class="bi bi-bluetooth me-1"></i>
+      <span id="btnConnectText">Connect printer</span>
+    </button>
+
+    <!-- Which entry to pick -->
+    <div class="hero-picker-hint alert alert-secondary small mt-4 mb-0 mx-auto text-start" role="note">
+      <div class="d-flex align-items-start gap-2">
+        <i class="bi bi-info-circle-fill text-info mt-1"></i>
+        <div>
+          <div class="fw-semibold mb-1">Picking the right entry in the browser dialog</div>
+          <div class="text-body-secondary">
+            Your printer may appear as more than one item. Pick the one named
+            <b class="text-body">P780BT</b> or <b class="text-body">JL_SPP</b>.
+            Skip anything labelled <span class="text-body-secondary">"Peripheral Bluetooth"</span>
+            or <span class="text-body-secondary">"Standard Serial over Bluetooth"</span> — those lead to a dead channel.
+          </div>
+          <button class="btn btn-link btn-sm p-0 mt-1" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#pickerExplain">
+            Why do I see multiple entries?
+          </button>
+          <div class="collapse mt-2" id="pickerExplain">
+            <div class="small text-body-secondary">
+              Windows exposes several Bluetooth-serial endpoints for one paired printer: a named one that matches the printer's service, plus generic placeholders. We only speak to the named one.
+              If you pick a wrong entry, the app detects it within a second and disconnects with a message — nothing bad happens.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3 small text-body-secondary">
+      Works in Chrome or Edge (desktop). Pair the printer with your OS first.
+    </div>
+  </section>
+
+  <!-- ========== PRIMARY VIEWS (hidden until connected) ========== -->
+  <div class="tab-content d-none" id="appViews">
+
+    <!-- =============== DESIGN & PRINT =============== -->
+    <div class="tab-pane fade show active" id="view-design" role="tabpanel">
+      <div class="row g-3">
+
+        <!-- DESIGNER (8) -->
+        <section class="col-xl-8">
+          <div class="card shadow-sm accent-primary h-100">
+            <i class="bi bi-vector-pen card-watermark"></i>
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <span class="d-flex align-items-center gap-2 fw-semibold">
+                <i class="bi bi-vector-pen text-primary"></i> Design your label
+              </span>
+              <span class="badge text-bg-secondary small" id="designerSizeHint"><span data-role="l">&mdash;</span> mm long &times; <span data-role="w">&mdash;</span> mm wide</span>
+            </div>
+            <div class="card-body">
+
+              <!-- Cartridge-width mismatch alert (shown only when the designer's
+                   cartridge width differs from the physically-loaded one). -->
+              <div id="cartridgeMismatch" class="alert alert-warning d-none cartridge-mismatch-alert py-2 px-3 mb-3" role="alert">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <i class="bi bi-exclamation-triangle-fill"></i>
+                  <span class="flex-grow-1 small">Designer is set to <b><span id="mismatchDesigner">—</span> mm</b> but the printer has a <b><span id="mismatchDetected">—</span> mm</b> cartridge loaded.</span>
+                  <button type="button" class="btn btn-sm btn-warning" id="btnCartridgeSwitch"><i class="bi bi-arrow-left-right me-1"></i> Switch designer to <span id="mismatchTarget">—</span> mm</button>
+                </div>
+              </div>
+
+              <!-- Size row -->
+              <div class="size-row-with-diagram d-flex gap-3 align-items-stretch mb-3 flex-wrap">
+                <div class="size-axis-diagram" aria-hidden="true">
+                  <div class="sad-tape"><span class="sad-label-w">length &rarr;</span><span class="sad-label-h">width</span></div>
+                </div>
+                <div class="row g-2 flex-grow-1 mb-0">
+                  <div class="col-sm-4">
+                    <label class="form-label small mb-1" for="lblHeightMm">
+                      Cartridge width (mm)
+                      <i class="bi bi-info-circle ms-1 text-body-secondary" title="Physical tape width. Must match the cartridge currently loaded into the printer. P780BT supports 12, 18 and 24 mm cartridges."></i>
+                    </label>
+                    <select id="lblHeightMm" class="form-select form-select-sm">
+                      <option value="12">12 mm</option>
+                      <option value="18">18 mm</option>
+                      <option value="24">24 mm</option>
+                    </select>
+                  </div>
+                  <div class="col-sm-4">
+                    <label class="form-label small mb-1" for="lblWidthMm">Label length (mm)</label>
+                    <input type="number" id="lblWidthMm" min="10" max="200" step="1" value="40" placeholder="e.g. 40" class="form-control form-control-sm">
+                  </div>
+                  <div class="col-sm-4">
+                    <label class="form-label small mb-1" for="lblDither">
+                      Image style
+                      <i class="bi bi-info-circle ms-1 text-body-secondary" title="How grayscale images are converted to black &amp; white dots"></i>
+                    </label>
+                    <select id="lblDither" class="form-select form-select-sm">
+                      <option value="threshold" selected>Sharp (threshold)</option>
+                      <option value="floyd">Smooth (Floyd-Steinberg)</option>
+                      <option value="atkinson">Soft (Atkinson)</option>
+                      <option value="none">None</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Elements toolbar -->
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="small text-body-secondary text-uppercase fw-semibold" style="letter-spacing:.08em">
+                  <i class="bi bi-layers me-1"></i>Elements
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                      <i class="bi bi-plus-lg"></i> Add
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      <li><a class="dropdown-item" href="#" data-add="text"><i class="bi bi-type me-2"></i>Text</a></li>
+                      <li><a class="dropdown-item" href="#" data-add="counter"><i class="bi bi-123 me-2"></i>Text + counter</a></li>
+                      <li><a class="dropdown-item" href="#" data-add="barcode"><i class="bi bi-upc me-2"></i>Barcode</a></li>
+                      <li><a class="dropdown-item" href="#" data-add="qr"><i class="bi bi-qr-code me-2"></i>QR code</a></li>
+                      <li><a class="dropdown-item" href="#" data-add="datamatrix"><i class="bi bi-grid-3x3 me-2"></i>Data Matrix</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><a class="dropdown-item" href="#" data-add="icon"><i class="bi bi-emoji-smile me-2"></i>Icon&hellip;</a></li>
+                    </ul>
+                  </div>
+                  <div class="form-check form-switch small ms-2">
+                    <input class="form-check-input" type="checkbox" id="chkShowMm">
+                    <label class="form-check-label" for="chkShowMm">mm</label>
+                  </div>
+                </div>
+              </div>
+              <div id="elementsList" class="elements-list mb-3"></div>
+
+              <!-- Preview header -->
+              <div class="small text-body-secondary text-uppercase fw-semibold mb-2 d-flex align-items-center gap-2 flex-wrap" style="letter-spacing:.08em">
+                <i class="bi bi-eye me-1"></i>Preview <span id="previewPxHint" class="text-body-secondary text-lowercase ms-1"></span>
+                <div class="ms-auto d-flex align-items-center gap-2 text-lowercase fw-normal">
+                  <div class="d-flex align-items-center gap-1">
+                    <span class="small text-body-secondary">Selected:</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                      <button class="btn btn-outline-secondary" id="btnCenterH" aria-label="Center horizontally" title="Center horizontally" disabled><i class="bi bi-arrows-collapse-vertical"></i></button>
+                      <button class="btn btn-outline-secondary" id="btnCenterV" aria-label="Center vertically" title="Center vertically" disabled><i class="bi bi-arrows-collapse"></i></button>
+                      <button class="btn btn-outline-secondary" id="btnCenterBoth" aria-label="Center on both axes" title="Center on both axes" disabled><i class="bi bi-bullseye"></i></button>
+                    </div>
+                  </div>
+                  <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="chkGrid" checked>
+                    <label class="form-check-label" for="chkGrid"><i class="bi bi-grid-3x3"></i> grid</label>
+                  </div>
+                  <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="chkSnap" checked>
+                    <label class="form-check-label" for="chkSnap"><i class="bi bi-magnet"></i> snap</label>
+                  </div>
+                </div>
+              </div>
+              <div class="small text-body-secondary mb-2">
+                <i class="bi bi-arrows-move"></i> drag &middot; resize corner &middot; <kbd>Del</kbd> remove
+              </div>
+              <div class="preview-wrap">
+                <canvas id="labelCanvas" width="320" height="200"></canvas>
+              </div>
+
+              <!-- Designer footer actions — the natural next step after
+                   the preview looks right is to push the label into the
+                   print queue. Save-as-template and Clear live here as
+                   secondary actions on either side of the primary CTA. -->
+              <div class="designer-actions d-flex gap-2 mt-3 flex-wrap">
+                <button id="btnSaveTemplate" type="button" class="btn btn-outline-primary" title="Save this label as a reusable template">
+                  <i class="bi bi-bookmark-plus me-1"></i> Save as template
+                </button>
+                <button id="btnAddToQueue" class="btn btn-success flex-grow-1">
+                  <i class="bi bi-plus-circle me-1"></i> Add to queue
+                </button>
+                <button id="btnClearDesigner" class="btn btn-outline-danger ms-auto" title="Clear the canvas">
+                  <i class="bi bi-trash3 me-1"></i> Clear
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- PRINT CARD (4) -->
+        <section class="col-xl-4">
+          <div class="card shadow-sm accent-success print-card">
+            <i class="bi bi-printer card-watermark"></i>
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <span class="d-flex align-items-center gap-2 fw-semibold">
+                <i class="bi bi-printer-fill text-success"></i> Print
+              </span>
+              <span id="queueCount" class="badge text-bg-success small">0 labels</span>
+            </div>
+            <div class="card-body d-flex flex-column gap-3">
+
+              <!-- Queue — always visible at the top of the Print card.
+                   Each queue item carries its own per-label `copies`
+                   counter (default 1), so there's no global Copies field
+                   anymore — the Print button iterates each item × its
+                   copies when it fires. -->
+              <div class="queue-section">
+                <div class="small text-body-secondary text-uppercase fw-semibold mb-2" style="letter-spacing:.08em">
+                  <i class="bi bi-list-check me-1"></i>Queue
+                </div>
+                <div id="queueList" class="queue-list mb-2">
+                  <div class="queue-empty text-body-secondary text-center py-3 small">
+                    <i class="bi bi-inbox d-block mb-1" style="font-size:1.25rem"></i>
+                    Queue is empty.
+                  </div>
+                </div>
+                <button id="btnClearQueue" class="btn btn-outline-secondary btn-sm w-100" disabled>
+                  <i class="bi bi-trash me-1"></i> Clear queue
+                </button>
+              </div>
+
+              <!-- Print options — blank-feed toggle sits right above the
+                   big Print CTA so the user sees the relevant flag next
+                   to the action that consumes it. -->
+              <div class="form-check form-switch small">
+                <input class="form-check-input" type="checkbox" role="switch" id="qContinuous" checked>
+                <label class="form-check-label" for="qContinuous" title="Skip the blank feed between labels by forcing PAPER_TYPE=Continuous for each job">
+                  No blank feed between labels
+                </label>
+              </div>
+
+              <div id="printProgressWrap">
+                <button id="btnPrintQueue" class="btn btn-success btn-lg print-cta w-100" disabled><i class="bi bi-printer-fill me-2"></i><span id="btnPrintQueueLabel">Print</span></button>
+                <div id="printProgress" class="print-progress d-none" role="status">
+                  <div class="d-flex align-items-center gap-2 small mb-1"><div class="spinner-border spinner-border-sm text-success" role="status"></div><span>Printing <b id="printProgressCurrent">0</b> of <b id="printProgressTotal">0</b>&hellip;</span></div>
+                  <div class="progress" style="height:8px"><div id="printProgressBar" class="progress-bar bg-success" style="width:0%"></div></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+    <!-- /view-design -->
+
+    <!-- =============== TEMPLATES =============== -->
+    <div class="tab-pane fade" id="view-templates" role="tabpanel">
+      <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <div>
+          <h5 class="mb-0"><i class="bi bi-collection me-2 text-primary"></i>Your templates</h5>
+          <div class="small text-body-secondary"><i class="bi bi-hdd me-1"></i>Stored in this browser only &mdash; use Export to back them up.</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <div class="input-group input-group-sm" style="max-width:220px">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input id="templateSearch" type="search" class="form-control" placeholder="Search templates...">
+            <button id="templateSearchClear" class="btn btn-outline-secondary d-none" type="button" title="Clear"><i class="bi bi-x"></i></button>
+          </div>
+          <div class="btn-group btn-group-sm">
+            <button id="btnExportTemplates" type="button" class="btn btn-outline-secondary" title="Download all templates as a JSON file">
+              <i class="bi bi-download me-1"></i>Export
+            </button>
+            <button id="btnImportTemplates" type="button" class="btn btn-outline-secondary" title="Import templates from a JSON file">
+              <i class="bi bi-upload me-1"></i>Import
+            </button>
+          </div>
+          <input id="templateImportFile" type="file" accept="application/json,.json" class="d-none">
+          <button id="btnNewFromDesigner" type="button" class="btn btn-primary btn-sm" title="Save the current design as a template">
+            <i class="bi bi-plus-lg me-1"></i> New from designer
+          </button>
+        </div>
+      </div>
+
+      <div id="templatesGallery" class="row g-3">
+        <!-- Populated by app.js (renderTemplatesGallery) -->
+      </div>
+
+      <div id="templatesEmpty" class="text-center py-5 d-none">
+        <i class="bi bi-collection display-4 text-body-secondary mb-3 d-block"></i>
+        <h5 class="fw-semibold mb-1">No templates yet</h5>
+        <p class="text-body-secondary mb-3">Design a label on the <b>Design &amp; Print</b> tab, then click <i class="bi bi-bookmark-plus"></i> <b>Save as template</b>.</p>
+        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-target="#view-design" onclick="document.getElementById('nav-design-btn').click()">
+          <i class="bi bi-vector-pen me-1"></i> Open designer
+        </button>
+      </div>
+    </div>
+    <!-- /view-templates -->
+
+    <!-- =============== PRINTER =============== -->
+    <div class="tab-pane fade" id="view-printer" role="tabpanel">
+      <div class="row g-3">
+
+        <!-- Printer identity -->
+        <section class="col-12">
+          <div class="card shadow-sm accent-primary">
+            <i class="bi bi-fingerprint card-watermark"></i>
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <span class="d-flex align-items-center gap-2 fw-semibold">
+                <i class="bi bi-fingerprint text-primary"></i> Printer
+              </span>
+              <button class="btn btn-link btn-sm p-0 text-decoration-none"
+                      type="button" data-bs-toggle="collapse" data-bs-target="#printerDetails"
+                      aria-expanded="false">
+                Show details <i class="bi bi-chevron-down"></i>
+              </button>
+            </div>
+            <div class="card-body">
+              <dl class="row mb-0">
+                <dt class="col-sm-3 text-body-secondary fw-normal small">Serial number</dt>
+                <dd class="col-sm-9 fw-semibold font-monospace" data-field="serial_number">—</dd>
+              </dl>
+              <div class="collapse" id="printerDetails">
+                <hr class="my-3">
+                <dl class="row mb-0 small">
+                  <dt class="col-sm-3 text-body-secondary fw-normal">Firmware</dt>
+                  <dd class="col-sm-9 fw-semibold" data-field="firmware_version">—</dd>
+                  <dt class="col-sm-3 text-body-secondary fw-normal">BT MAC</dt>
+                  <dd class="col-sm-9 fw-semibold font-monospace" data-field="bt_mac">—</dd>
+                  <dt class="col-sm-3 text-body-secondary fw-normal">BT chip</dt>
+                  <dd class="col-sm-9 fw-semibold" data-field="bt_chip_type">—</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Battery & power -->
+        <section class="col-12">
+          <div class="card shadow-sm accent-success">
+            <i class="bi bi-battery-charging card-watermark"></i>
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <span class="d-flex align-items-center gap-2 fw-semibold">
+                <i class="bi bi-battery-half text-success"></i> Battery &amp; power
+              </span>
+              <button class="btn btn-link btn-sm p-0 text-decoration-none"
+                      type="button" data-bs-toggle="collapse" data-bs-target="#powerDetails"
+                      aria-expanded="false">
+                Show details <i class="bi bi-chevron-down"></i>
+              </button>
+            </div>
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="progress flex-grow-1" role="progressbar" style="height:14px">
+                  <div id="batteryBar" class="progress-bar bg-success" style="width:0%"></div>
+                </div>
+                <span class="fw-semibold" data-field="battery">—</span>
+              </div>
+
+              <!-- Safe setting: Auto power-off -->
+              <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                  <label class="form-label small mb-1" for="selAutoPower">Auto power-off</label>
+                  <div class="input-group input-group-sm">
+                    <select id="selAutoPower" class="form-select" data-write-control disabled></select>
+                    <button id="btnApplyAutoPower" class="btn btn-primary" data-write-control disabled>Save</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="collapse mt-3" id="powerDetails">
+                <hr class="my-3">
+                <dl class="row mb-0 small">
+                  <dt class="col-sm-3 text-body-secondary fw-normal">Current auto-off</dt>
+                  <dd class="col-sm-9 fw-semibold" data-field="auto_power_time">—</dd>
+                  <dt class="col-sm-3 text-body-secondary fw-normal">Head temperature</dt>
+                  <dd class="col-sm-9 fw-semibold" data-field="hot_state">—</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Paper & cartridge -->
+        <section class="col-12">
+          <div class="card shadow-sm accent-warning">
+            <i class="bi bi-upc-scan card-watermark"></i>
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <span class="d-flex align-items-center gap-2 fw-semibold">
+                <i class="bi bi-upc-scan text-warning"></i> Paper &amp; cartridge
+              </span>
+              <div class="d-flex align-items-center gap-2">
+                <span id="materialHint" class="badge text-bg-secondary small">not read</span>
+                <button class="btn btn-link btn-sm p-0 text-decoration-none"
+                        type="button" data-bs-toggle="collapse" data-bs-target="#paperDetails"
+                        aria-expanded="false">
+                  Show details <i class="bi bi-chevron-down"></i>
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <!-- Primary 3-stat strip: the three values the user cares about most. -->
+              <div class="paper-stat-strip row g-3">
+                <div class="col-md-4">
+                  <div class="paper-stat">
+                    <div class="ps-label">Paper</div>
+                    <div class="ps-value" data-field="paper_state">—</div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="paper-stat">
+                    <div class="ps-label">Cover</div>
+                    <div class="ps-value" data-field="cover_state">—</div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="paper-stat">
+                    <div class="ps-label">Cartridge</div>
+                    <div class="ps-value" data-field="material_size">—</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Safe setting: Paper type override (next job only) -->
+              <hr class="my-3">
+              <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                  <label class="form-label small mb-1" for="selPaperType">
+                    Paper type for next job
+                    <i class="bi bi-info-circle ms-1 text-body-secondary" title="Applies only to the next print job; not persisted across reboots."></i>
+                  </label>
+                  <div class="input-group input-group-sm">
+                    <select id="selPaperType" class="form-select" data-write-control disabled></select>
+                    <button id="btnApplyPaperType" class="btn btn-primary" data-write-control disabled>Apply</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="collapse mt-3" id="paperDetails">
+                <hr class="my-3">
+                <div class="row g-3 mb-3">
+                  <div class="col-md-4">
+                    <div class="small text-body-secondary">Detected label type</div>
+                    <div class="fw-semibold" data-field="label_type">—</div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="small text-body-secondary">Paper type (cartridge)</div>
+                    <div class="fw-semibold" data-field="material_paper">—</div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="small text-body-secondary">Category</div>
+                    <div class="fw-semibold" data-field="material_cat">—</div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="small text-body-secondary">Background</div>
+                    <div class="fw-semibold d-flex align-items-center gap-2">
+                      <span class="color-swatch" data-swatch="material_bg"></span>
+                      <span data-field="material_bg">—</span>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="small text-body-secondary">Text color</div>
+                    <div class="fw-semibold d-flex align-items-center gap-2">
+                      <span class="color-swatch" data-swatch="material_fg"></span>
+                      <span data-field="material_fg">—</span>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="small text-body-secondary">Cover (cartridge)</div>
+                    <div class="fw-semibold" data-field="material_cover">—</div>
+                  </div>
+                </div>
+                <dl class="row mb-0 small">
+                  <dt class="col-sm-3 text-body-secondary fw-normal">RFID ID</dt>
+                  <dd class="col-sm-9 fw-semibold font-monospace" data-field="material_rfid">—</dd>
+                  <dt class="col-sm-3 text-body-secondary fw-normal">RFID label info</dt>
+                  <dd class="col-sm-9 fw-semibold" data-field="rfid_label_info">—</dd>
+                  <dt class="col-sm-3 text-body-secondary fw-normal">RFID remain</dt>
+                  <dd class="col-sm-9 fw-semibold" data-field="rfid_remain">—</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Expert tuning: moved here from the Advanced offcanvas so it lives
+             next to the rest of the Printer controls. Hidden unless the
+             "Enable expert controls" switch in the offcanvas is on. -->
+        <section class="col-12" id="expertTuningSection" hidden>
+          <div class="card shadow-sm accent-info">
+            <i class="bi bi-sliders card-watermark"></i>
+            <div class="card-header d-flex align-items-center gap-2 fw-semibold">
+              <i class="bi bi-sliders text-info"></i> Tuning
+              <span class="badge text-bg-warning small ms-auto"><i class="bi bi-unlock-fill me-1"></i>Expert</span>
+            </div>
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label small mb-1" for="inpDensity">Print density <span class="text-body-secondary">(1&ndash;10)</span></label>
+                  <div class="input-group input-group-sm">
+                    <input id="inpDensity" type="number" min="1" max="10" step="1" value="3" class="form-control" data-write-control disabled>
+                    <button id="btnApplyDensity" class="btn btn-primary" data-write-control disabled>Apply</button>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1" for="inpSpeed">Print speed <span class="text-body-secondary">(1&ndash;5)</span></label>
+                  <div class="input-group input-group-sm">
+                    <input id="inpSpeed" type="number" min="1" max="5" step="1" value="3" class="form-control" data-write-control disabled>
+                    <button id="btnApplySpeed" class="btn btn-primary" data-write-control disabled>Apply</button>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1" for="inpMargin">Left offset <span class="text-body-secondary">(0&ndash;255)</span></label>
+                  <div class="input-group input-group-sm">
+                    <input id="inpMargin" type="number" min="0" max="255" step="1" value="0" class="form-control" data-write-control disabled>
+                    <button id="btnApplyMargin" class="btn btn-primary" data-write-control disabled>Apply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+    <!-- /view-printer -->
+
+  </div>
+  <!-- /tab-content -->
+
+  <!-- Compatibility containers: keep IDs referenced elsewhere (legacy tabs) -->
+  <div id="tab-device" class="d-none" aria-hidden="true"></div>
+  <div id="tab-labels" class="d-none" aria-hidden="true"></div>
+
+  <footer class="text-body-secondary small mt-auto pt-4 pb-3 d-flex align-items-center gap-2 flex-wrap">
+    <i class="bi bi-info-circle"></i>
+    <span>Web-based printing app for P780BT</span>
+    <span class="text-body-secondary">&middot;</span>
+    <span>
+      built by
+      <a href="https://luzin.cc" target="_blank" rel="author noopener" class="link-info text-decoration-none">Oleksandr Luzin</a>
+    </span>
+    <a href="./P780BT_protocol.md" target="_blank" class="ms-auto link-secondary text-decoration-none">protocol spec</a>
+  </footer>
+</main>
+
+<!-- ========== ADVANCED OFFCANVAS ========== -->
+<div class="offcanvas offcanvas-end advanced-offcanvas" tabindex="-1" id="offcanvasAdvanced" aria-labelledby="offcanvasAdvancedLabel">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title d-flex align-items-center gap-2" id="offcanvasAdvancedLabel">
+      <i class="bi bi-gear"></i> Advanced
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body p-0">
+
+    <!-- Expert controls switch at the top -->
+    <div class="p-3 border-bottom bg-body-secondary d-flex align-items-center justify-content-between">
+      <label for="writeMode" class="small fw-semibold mb-0 d-flex align-items-center gap-2" style="cursor:pointer">
+        <i class="bi bi-unlock-fill"></i> Enable expert controls
+      </label>
+      <div class="form-check form-switch m-0">
+        <input class="form-check-input" type="checkbox" role="switch" id="writeMode">
+      </div>
+    </div>
+    <div class="px-3 pt-2 pb-1 small text-body-secondary">
+      <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+      Unlocks write commands. Wrong values can require a power-cycle to recover.
+    </div>
+
+    <!-- Dedicated READ ALL block: promoted above the Advanced accordion
+         so a read-only refresh is always one click away. -->
+    <div class="p-3 border-bottom">
+      <button id="btnReadAll" class="btn btn-success w-100" disabled><i class="bi bi-arrow-repeat me-1"></i> READ ALL</button>
+      <div class="small text-body-secondary mt-2">Refreshes every status field. Safe &mdash; read-only.</div>
+    </div>
+
+    <div class="accordion accordion-flush" id="advAccordion">
+
+      <!-- Raw commands -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accRaw">
+            <i class="bi bi-terminal me-2"></i> Raw commands
+            <span class="badge text-bg-secondary small ms-2" id="cmdCount">0</span>
+          </button>
+        </h2>
+        <div id="accRaw" class="accordion-collapse collapse" data-bs-parent="#advAccordion">
+          <div class="accordion-body">
+            <div id="cmdButtons" class="d-grid gap-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Maintenance -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accMaint">
+            <i class="bi bi-wrench-adjustable me-2"></i> Maintenance
+          </button>
+        </h2>
+        <div id="accMaint" class="accordion-collapse collapse" data-bs-parent="#advAccordion">
+          <div class="accordion-body">
+            <div id="actionButtons" class="d-flex flex-wrap gap-2"></div>
+            <div class="text-body-secondary small mt-3">
+              <i class="bi bi-info-circle me-1"></i>
+              Danger actions ask for confirmation before firing.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exchange log -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accLog">
+            <i class="bi bi-journal-text me-2"></i> Exchange log
+          </button>
+        </h2>
+        <div id="accLog" class="accordion-collapse collapse" data-bs-parent="#advAccordion">
+          <div class="accordion-body p-0">
+            <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
+              <div class="form-check form-switch small mb-0">
+                <input class="form-check-input" type="checkbox" id="chkAutoscroll" checked />
+                <label class="form-check-label" for="chkAutoscroll">auto-scroll</label>
+              </div>
+              <button id="btnClearLog" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-eraser me-1"></i> Clear
+              </button>
+            </div>
+            <pre id="log" class="log-box m-0 p-3 small"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- About -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accAbout">
+            <i class="bi bi-info-circle me-2"></i> About
+          </button>
+        </h2>
+        <div id="accAbout" class="accordion-collapse collapse" data-bs-parent="#advAccordion">
+          <div class="accordion-body">
+            <dl class="row mb-0 small">
+              <dt class="col-sm-5 text-body-secondary fw-normal">Firmware</dt>
+              <dd class="col-sm-7 fw-semibold" data-field="firmware_version">—</dd>
+              <dt class="col-sm-5 text-body-secondary fw-normal">Serial</dt>
+              <dd class="col-sm-7 fw-semibold" data-field="serial_number">—</dd>
+              <dt class="col-sm-5 text-body-secondary fw-normal">BT MAC</dt>
+              <dd class="col-sm-7 fw-semibold font-monospace" data-field="bt_mac">—</dd>
+              <dt class="col-sm-5 text-body-secondary fw-normal">BT chip</dt>
+              <dd class="col-sm-7 fw-semibold" data-field="bt_chip_type">—</dd>
+            </dl>
+            <hr class="my-3">
+            <a href="./P780BT_protocol.md" target="_blank" class="small">
+              <i class="bi bi-file-earmark-text me-1"></i> P780BT protocol spec
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div id="toastContainer" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080"></div>
+
+<!-- Save / Rename template modal -->
+<div class="modal fade" id="templateNameModal" tabindex="-1" aria-labelledby="templateNameModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="templateNameModalLabel">
+          <i class="bi bi-bookmark-plus me-2"></i><span id="templateNameModalAction">Save</span> template
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="templateNameInput" class="form-label small mb-1">Template name</label>
+        <input type="text" id="templateNameInput" class="form-control" maxlength="60" placeholder="e.g. Price tag 40×25">
+        <div class="form-text">Templates are stored in your browser only (local storage).</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="templateNameModalConfirm">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Icon picker modal (Bootstrap Icons) -->
+<div class="modal fade" id="iconPickerModal" tabindex="-1" aria-labelledby="iconPickerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="iconPickerModalLabel"><i class="bi bi-emoji-smile me-2"></i>Pick an icon</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+          <input id="iconSearchInput" type="search" class="form-control form-control-sm flex-grow-1" placeholder="Search icons (e.g. printer, arrow, bell)..." autocomplete="off">
+          <a class="small text-body-secondary" href="https://icons.getbootstrap.com/" target="_blank" rel="noopener">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Browse on icons.getbootstrap.com
+          </a>
+        </div>
+        <div id="iconGrid" class="icon-picker-grid"></div>
+        <div id="iconPickerStatus" class="small text-body-secondary mt-2 text-center"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Import templates modal (merge vs replace) -->
+<div class="modal fade" id="templateImportModal" tabindex="-1" aria-labelledby="templateImportModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="templateImportModalLabel"><i class="bi bi-upload me-2"></i>Import templates</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-body-secondary mb-3" id="templateImportSummary">
+          Loading file...
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="radio" name="importMode" id="importModeMerge" value="merge" checked>
+          <label class="form-check-label" for="importModeMerge">
+            <b>Merge</b> — add imported templates alongside existing ones.
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="importMode" id="importModeReplace" value="replace">
+          <label class="form-check-label" for="importModeReplace">
+            <b>Replace</b> — delete all current templates and use the imported set.
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="templateImportConfirm">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete template confirm modal -->
+<div class="modal fade" id="templateDeleteModal" tabindex="-1" aria-labelledby="templateDeleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="templateDeleteModalLabel"><i class="bi bi-trash me-2 text-danger"></i>Delete template</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">Delete <b id="templateDeleteName">this template</b>? This cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="templateDeleteConfirm">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Clear designer confirmation -->
+<div class="modal fade" id="clearDesignerModal" tabindex="-1" aria-labelledby="clearDesignerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="clearDesignerModalLabel"><i class="bi bi-trash3 me-2 text-danger"></i>Clear the designer?</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body"><p class="mb-1">All <b id="clearDesignerCount">0</b> elements will be removed.</p><p class="small text-body-secondary mb-0">Save as a template first if you want to keep this design.</p></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-danger" id="clearDesignerConfirm">Clear everything</button></div>
+  </div></div>
+</div>
+
+<!-- Wrong Bluetooth endpoint modal -->
+<div class="modal fade" id="wrongEndpointModal" tabindex="-1" aria-labelledby="wrongEndpointModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="wrongEndpointModalLabel"><i class="bi bi-bluetooth me-2 text-warning"></i>Wrong Bluetooth endpoint</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body"><p>That serial port did not respond like a P780BT. This usually means you picked a generic "Standard Serial over Bluetooth" entry instead of the named printer channel.</p><div class="alert alert-secondary small mb-0">Pick the entry labelled <b class="text-body">P780BT</b> or <b class="text-body">JL_SPP</b>. Skip anything labelled <i>Peripheral Bluetooth</i> or <i>Standard Serial over Bluetooth</i>.</div></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button><button type="button" class="btn btn-primary" id="wrongEndpointRetry"><i class="bi bi-arrow-repeat me-1"></i> Try again</button></div>
+  </div></div>
+</div>
+
+<!-- Print confirmation: summarises how many physical labels will be produced
+     (queue items × per-item copies) before anything is sent to the printer,
+     so a stray 50-count counter element can't silently consume half a roll. -->
+<div class="modal fade" id="printConfirmModal" tabindex="-1" aria-labelledby="printConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="printConfirmModalLabel"><i class="bi bi-printer-fill me-2 text-success"></i>Start printing?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          About to print <b id="printConfirmTotal">0</b> physical label<span id="printConfirmTotalPlural">s</span>
+          from <b id="printConfirmUnique">0</b> queue item<span id="printConfirmUniquePlural">s</span>.
+        </p>
+        <div class="small text-body-secondary">
+          <i class="bi bi-info-circle me-1"></i>
+          Make sure the correct cartridge is loaded and the printer is ready. The printer retains the job internally &mdash; to abort mid-run, power-cycle the printer.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="printConfirmStart">
+          <i class="bi bi-printer-fill me-1"></i> Start print
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="./app.js" defer></script>
+
+<!-- Small glue: show/hide hero + status strip based on connection state (no JS file edits) -->
+<script>
+(function(){
+  // Observe #statusBadge class changes to decide connected vs disconnected.
+  function isConnected() {
+    const b = document.getElementById('statusBadge');
+    return !!b && b.classList.contains('text-bg-success');
+  }
+  function applyState() {
+    const connected = isConnected();
+    const hero   = document.getElementById('hero');
+    const strip  = document.getElementById('statusStrip');
+    const views  = document.getElementById('appViews');
+    // Hero visible only when disconnected; app views only when connected.
+    if (hero)  hero.classList.toggle('d-none', connected);
+    if (views) views.classList.toggle('d-none', !connected);
+    // Everything tagged `.connected-only` (nav pills, gear, shortcuts,
+    // Connect/Disconnect button, burger toggler, navbar collapse panel)
+    // hides pre-connect so the landing page shows a single action — the
+    // hero Connect CTA — without duplicates.
+    document.querySelectorAll('.connected-only').forEach(el => {
+      el.classList.toggle('d-none', !connected);
+    });
+    // If the user disconnects while the mobile burger menu is open, make
+    // sure the collapse panel is reset to closed — otherwise reconnecting
+    // would show it already expanded on mobile.
+    if (!connected) {
+      const nav = document.getElementById('navbarMain');
+      if (nav) nav.classList.remove('show');
+      const toggler = document.querySelector('.navbar-toggler[data-bs-target="#navbarMain"]');
+      if (toggler) toggler.setAttribute('aria-expanded', 'false');
+    }
+    if (strip) strip.classList.toggle('show', connected);
+  }
+  // Forward clicks from mobile-only proxy buttons inside the burger panel
+  // to their desktop-only originals (which carry the real JS handlers bound
+  // in app.js). This lets us keep a single source of truth for behavior
+  // without touching app.js, while still presenting full-width tap targets
+  // in the collapsed panel.
+  function wireMobileProxy(proxyId, targetId) {
+    const proxy = document.getElementById(proxyId);
+    const target = document.getElementById(targetId);
+    if (!proxy || !target) return;
+    proxy.addEventListener('click', function(e){
+      e.preventDefault();
+      // Collapse the burger panel so the panel doesn't cover the modal
+      // or the newly-visible hero after disconnect.
+      const nav = document.getElementById('navbarMain');
+      if (nav && nav.classList.contains('show') && window.bootstrap) {
+        const c = window.bootstrap.Collapse.getOrCreateInstance(nav);
+        if (c) c.hide();
+      }
+      target.click();
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    applyState();
+    const badge = document.getElementById('statusBadge');
+    if (badge) {
+      const obs = new MutationObserver(applyState);
+      obs.observe(badge, { attributes: true, attributeFilter: ['class'] });
+    }
+    wireMobileProxy('btnDisconnectMobile', 'btnDisconnect');
+
+    // Auto-collapse the burger panel on mobile when the user taps any
+    // pill or action button inside it — so the new view (or the Advanced
+    // offcanvas) isn't covered by the still-expanded panel.
+    const navMain = document.getElementById('navbarMain');
+    if (navMain) {
+      navMain.addEventListener('click', function(e){
+        const clickable = e.target.closest('[data-bs-toggle="pill"], .navbar-actions .btn');
+        if (!clickable) return;
+        if (navMain.classList.contains('show') && window.bootstrap) {
+          const c = window.bootstrap.Collapse.getOrCreateInstance(navMain);
+          if (c) c.hide();
+        }
+      });
+    }
+  });
+})();
+</script>
+</body>
+</html>
