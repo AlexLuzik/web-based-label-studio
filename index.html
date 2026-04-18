@@ -935,24 +935,27 @@
       </div>
       <div class="alert alert-warning small mb-0">
         <div class="fw-semibold mb-1"><i class="bi bi-apple me-1"></i>On macOS after a disconnect</div>
-        This is a <b>macOS-level bug in <code>bluetoothd</code></b> that affects
-        <i>every</i> app using Bluetooth SPP (not just this one, not just
-        Chrome) — after a disconnect the RFCOMM channel state stays
-        broken and the port opens but routes no data. Nothing the
-        browser can do clears it; the Web Serial spec has no hook for
-        it. Pick whichever of these is least annoying for you:
+        This is a <b>known Chromium bug</b> on macOS — tracked upstream at
+        <a href="https://issues.chromium.org/issues/345369596" class="link-warning" target="_blank" rel="noopener">issues.chromium.org/345369596</a>.
+        Chromium talks to <code>IOBluetoothRFCOMMChannel</code> directly (the same
+        API native macOS apps use, which is why those reconnect fine), but
+        its Web Serial wrapper doesn't release the channel cleanly on
+        <code>port.close()</code>. A stale IOKit reference hangs on, so the next
+        <code>port.open()</code> gets a port that looks alive but routes no data.
+        Nothing we can do from the browser clears it. Pick whichever of
+        these is least annoying for you:
         <ul class="mb-1 mt-1 ps-4">
-          <li><b>Fastest (if you have <a href="https://formulae.brew.sh/formula/blueutil" class="link-warning">blueutil</a>):</b> in Terminal,
+          <li><b>Fastest (if you have <a href="https://formulae.brew.sh/formula/blueutil" class="link-warning" target="_blank" rel="noopener">blueutil</a>):</b> in Terminal,
             <code>blueutil --disconnect &lt;mac&gt; &amp;&amp; blueutil --connect &lt;mac&gt;</code>
-            — re-cycles just this device, no sudo.</li>
+            — forces <code>bluetoothd</code> to rebuild the channel, no sudo.</li>
           <li><b>Reliable, no extra tools:</b>
             <a href="x-apple.systempreferences:com.apple.Bluetooth" class="link-warning">System Settings → Bluetooth</a> →
             un-pair the printer → pair it again.</li>
-          <li><b>Nuclear option</b> (needs sudo, restarts the BT daemon, every BT
-            peripheral momentarily disconnects): <code>sudo pkill bluetoothd</code></li>
           <li>Or fully quit Chrome (<kbd>⌘</kbd>+<kbd>Q</kbd>) and reopen — Chrome
-            dropping its file descriptors nudges <code>bluetoothd</code> to rebuild
-            the channel.</li>
+            dropping its file descriptors lets IOKit release the stale
+            channel reference.</li>
+          <li><b>Nuclear</b> (needs sudo, every BT peripheral momentarily
+            disconnects): <code>sudo pkill bluetoothd</code></li>
         </ul>
       </div>
     </div>
