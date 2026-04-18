@@ -852,7 +852,15 @@ async function readAll() {
  * Returns true if the device is accepted; false otherwise (and the port is closed).
  */
 async function verifyPrinterIdentity() {
-  const TIMEOUT_MS = 1500;
+  // On macOS the Bluetooth SPP channel routinely needs a beat to
+  // stabilise after a (re)connect — the first packet we send can get
+  // swallowed or the response lands a few hundred ms late. A 1.5 s
+  // ceiling on a single SN query was too aggressive and surfaced the
+  // "Wrong endpoint" modal on perfectly legitimate reconnects. We now
+  // give each attempt 3 s and retry once if the first comes back empty.
+  const TIMEOUT_MS = 3000;
+  const MAX_ATTEMPTS = 2;
+
   // Wait for a tag 0x08 (SN response) within the timeout.
   const waitForSn = () => new Promise(resolve => {
     const original = link.parser.onFrame;
@@ -871,9 +879,15 @@ async function verifyPrinterIdentity() {
   });
 
   try {
-    const pending = waitForSn();
-    await link.send([...REQ_PREFIX, 0x09]);  // SN query
-    const payload = await pending;
+    let payload = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !payload; attempt++) {
+      if (attempt > 1) {
+        logLine('info', `Identity check: retry ${attempt}/${MAX_ATTEMPTS}…`);
+      }
+      const pending = waitForSn();
+      await link.send([...REQ_PREFIX, 0x09]);  // SN query
+      payload = await pending;
+    }
     if (!payload) {
       fail('This serial port did not answer our identity check — not a P780BT-family printer.');
       return false;
