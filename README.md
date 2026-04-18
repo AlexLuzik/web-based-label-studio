@@ -10,7 +10,7 @@ server, no native dependencies — just three static files.
 
 **Author:** [Oleksandr Luzin](https://luzin.cc) &middot;
 **License:** [MIT](./LICENSE.md) &middot;
-**Protocol reference:** [P780BT_protocol.md](./P780BT_protocol.md) &middot;
+**Protocol reference:** [P780BT_protocol.md](./printer_web/P780BT_protocol.md) &middot;
 **Live demo:** <https://alexluzik.github.io/p780bt-web/>
 <sub>(replace with your own GitHub user when forking)</sub>
 
@@ -56,7 +56,7 @@ The reverse-engineering was done in two stages:
    It parsed the HCI dumps, matched byte patterns against the
    decompiled `com.project.aimotech.*` Java sources, built up the
    request / response tables that now live in
-   [`P780BT_protocol.md`](./P780BT_protocol.md), and turned them into
+   [`P780BT_protocol.md`](./printer_web/P780BT_protocol.md), and turned them into
    the running web client in `printer_web/`.
 
 The rest of the repository — architecture, UI, print pipeline, raster
@@ -153,7 +153,6 @@ API backend.
 .
 ├── README.md                 ← this file
 ├── LICENSE.md                ← MIT + scope clarification
-├── P780BT_protocol.md        ← full reverse-engineered protocol spec
 ├── .gitignore
 ├── .github/
 │   └── workflows/
@@ -162,7 +161,7 @@ API backend.
     ├── index.html            ← all markup (nav, views, modals)
     ├── styles.css            ← custom dark-theme overlay on Bootstrap
     ├── app.js                ← everything else (see below)
-    └── P780BT_protocol.md    ← same spec, copied for self-contained hosting
+    └── P780BT_protocol.md    ← full reverse-engineered protocol spec
 ```
 
 ### About `app.js`
@@ -223,7 +222,7 @@ Loaded from public CDNs — no bundler, no `node_modules`:
 
 Everything this client knows about the wire format — request bytes,
 response tags, payload layouts, firmware quirks — is documented in
-[**P780BT_protocol.md**](./P780BT_protocol.md), including the U.S.
+[**P780BT_protocol.md**](./printer_web/P780BT_protocol.md), including the U.S.
 legal basis for the reverse-engineering that produced it.
 
 ## License & legal
