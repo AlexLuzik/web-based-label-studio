@@ -433,11 +433,24 @@ class SerialLink {
     await this._cleanup();
   }
 
-  async _cleanup() {
-    try { if (this.writer) { this.writer.releaseLock(); } } catch {}
-    this.writer = null;
-    try { if (this.port) await this.port.close(); } catch {}
-    this.port = null;
+  /**
+   * Release Chrome's grant on the underlying port in addition to closing
+   * it. This is the programmatic equivalent of un-pairing + re-pairing
+   * the BT device in the OS: on macOS the `/dev/tty.*` node backing a
+   * BT-SPP link can land in a zombie state after a disconnect where the
+   * OS still accepts writes but routes nothing through. `port.forget()`
+   * forces Chrome to drop its reference so the next `requestPort()`
+   * triggers a fresh OS-level handshake, which actually re-creates the
+   * tty node cleanly.
+   *
+   * Cost on healthy platforms (Windows, Linux): the user has to pick
+   * the printer from the picker again on the next connect. That's the
+   * same UX they already get — `requestPort()` always shows the picker.
+   */
+  async forget() {
+    const p = this.port;
+    await this.disconnect();
+    try { if (p && typeof p.forget === 'function') await p.forget(); } catch {}
   }
 }
 
@@ -886,10 +899,24 @@ async function verifyPrinterIdentity() {
     // Settle period: on a fresh (re)connect, writing into the port too
     // early means the bytes go into the void — the OS reports success
     // because the write buffer accepts them, but the remote side never
-    // sees them. A short wait before the first attempt fixes this on
-    // the vast majority of macOS reconnects we've tested.
+    // sees them.
     logLine('info', `Identity check: settling for ${INITIAL_SETTLE_MS}ms…`);
     await sleep(INITIAL_SETTLE_MS);
+
+    // Wake the printer before the first query. After a previous session
+    // ended mid-print or with an uncut label, the printer firmware can
+    // stay in a "waiting for more data" state and silently drop status
+    // queries. ESC @ (1B 40, INIT_PRINTER) resets that state without
+    // side-effects on a healthy printer — the reference Android app
+    // does the same thing on reconnect (see QuinPrinter.printBitmapx
+    // and the initConnectInfo preamble).
+    try {
+      logLine('info', 'Identity check: sending INIT_PRINTER (1B 40) to reset state…');
+      await link.send([0x1B, 0x40]);
+      await sleep(200);
+    } catch (wakeErr) {
+      logLine('error', `Identity check: INIT_PRINTER send failed: ${wakeErr.message || wakeErr}`);
+    }
 
     let payload = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && !payload; attempt++) {
@@ -900,8 +927,6 @@ async function verifyPrinterIdentity() {
         await link.send([...REQ_PREFIX, 0x09]);  // SN query
       } catch (sendErr) {
         logLine('error', `Identity check: send failed on attempt ${attempt}: ${sendErr.message || sendErr}`);
-        // The waitForSn promise still has an active timeout — let it
-        // resolve to null to keep the parser clean.
         await pending;
         if (attempt < MAX_ATTEMPTS) await sleep(INTER_ATTEMPT_MS);
         continue;
@@ -912,7 +937,18 @@ async function verifyPrinterIdentity() {
         logLine('info', `Identity check: SN arrived after ${elapsed}ms on attempt ${attempt}.`);
       } else {
         logLine('error', `Identity check: no SN after ${elapsed}ms on attempt ${attempt}.`);
-        if (attempt < MAX_ATTEMPTS) await sleep(INTER_ATTEMPT_MS);
+        // Re-ping with INIT_PRINTER every other attempt in case the
+        // first wake-up didn't land.
+        if (attempt < MAX_ATTEMPTS) {
+          if (attempt % 2 === 0) {
+            try {
+              logLine('info', 'Identity check: re-sending INIT_PRINTER before next attempt…');
+              await link.send([0x1B, 0x40]);
+              await sleep(200);
+            } catch {}
+          }
+          await sleep(INTER_ATTEMPT_MS);
+        }
       }
     }
     if (!payload) {
@@ -962,8 +998,12 @@ async function verifyPrinterIdentity() {
         window.showToast(reason, 'error');
       }
     } catch {}
-    // Disconnect — this is not our printer.
-    try { link.disconnect(); } catch {}
+    // Use forget() instead of disconnect() so the next reconnect
+    // attempt rebuilds the OS-level tty node from scratch — works
+    // around the macOS BT-SPP "zombie port" bug where a straight
+    // close+reopen keeps the broken state and the printer appears
+    // silent even though it's responding fine on other platforms.
+    try { link.forget(); } catch {}
   }
 }
 
