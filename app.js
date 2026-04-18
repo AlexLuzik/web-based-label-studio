@@ -852,14 +852,16 @@ async function readAll() {
  * Returns true if the device is accepted; false otherwise (and the port is closed).
  */
 async function verifyPrinterIdentity() {
-  // On macOS the Bluetooth SPP channel routinely needs a beat to
+  // macOS note: the Bluetooth SPP channel frequently needs a moment to
   // stabilise after a (re)connect — the first packet we send can get
-  // swallowed or the response lands a few hundred ms late. A 1.5 s
-  // ceiling on a single SN query was too aggressive and surfaced the
-  // "Wrong endpoint" modal on perfectly legitimate reconnects. We now
-  // give each attempt 3 s and retry once if the first comes back empty.
-  const TIMEOUT_MS = 3000;
-  const MAX_ATTEMPTS = 2;
+  // swallowed and/or the printer itself stays in a low-power state for
+  // a beat after pairing. Give the link a small settle delay, a
+  // generous per-attempt timeout, and retry a few times before giving
+  // up. Every attempt is logged so we can diagnose which step fails.
+  const INITIAL_SETTLE_MS = 400;    // wait for the SPP channel before first query
+  const TIMEOUT_MS        = 3000;   // per-attempt
+  const INTER_ATTEMPT_MS  = 500;    // delay between retries
+  const MAX_ATTEMPTS      = 4;
 
   // Wait for a tag 0x08 (SN response) within the timeout.
   const waitForSn = () => new Promise(resolve => {
@@ -878,15 +880,40 @@ async function verifyPrinterIdentity() {
     };
   });
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
   try {
+    // Settle period: on a fresh (re)connect, writing into the port too
+    // early means the bytes go into the void — the OS reports success
+    // because the write buffer accepts them, but the remote side never
+    // sees them. A short wait before the first attempt fixes this on
+    // the vast majority of macOS reconnects we've tested.
+    logLine('info', `Identity check: settling for ${INITIAL_SETTLE_MS}ms…`);
+    await sleep(INITIAL_SETTLE_MS);
+
     let payload = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && !payload; attempt++) {
-      if (attempt > 1) {
-        logLine('info', `Identity check: retry ${attempt}/${MAX_ATTEMPTS}…`);
-      }
+      logLine('info', `Identity check: attempt ${attempt}/${MAX_ATTEMPTS} — sending SN query, waiting up to ${TIMEOUT_MS}ms…`);
+      const started = performance.now();
       const pending = waitForSn();
-      await link.send([...REQ_PREFIX, 0x09]);  // SN query
+      try {
+        await link.send([...REQ_PREFIX, 0x09]);  // SN query
+      } catch (sendErr) {
+        logLine('error', `Identity check: send failed on attempt ${attempt}: ${sendErr.message || sendErr}`);
+        // The waitForSn promise still has an active timeout — let it
+        // resolve to null to keep the parser clean.
+        await pending;
+        if (attempt < MAX_ATTEMPTS) await sleep(INTER_ATTEMPT_MS);
+        continue;
+      }
       payload = await pending;
+      const elapsed = Math.round(performance.now() - started);
+      if (payload) {
+        logLine('info', `Identity check: SN arrived after ${elapsed}ms on attempt ${attempt}.`);
+      } else {
+        logLine('error', `Identity check: no SN after ${elapsed}ms on attempt ${attempt}.`);
+        if (attempt < MAX_ATTEMPTS) await sleep(INTER_ATTEMPT_MS);
+      }
     }
     if (!payload) {
       fail('This serial port did not answer our identity check — not a P780BT-family printer.');
