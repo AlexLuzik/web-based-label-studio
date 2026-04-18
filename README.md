@@ -10,7 +10,7 @@ server, no native dependencies — just three static files.
 
 **Author:** [Oleksandr Luzin](https://luzin.cc) &middot;
 **License:** [MIT](./LICENSE.md) &middot;
-**Protocol reference:** [P780BT_protocol.md](./printer_web/P780BT_protocol.md) &middot;
+**Protocol reference:** [P780BT_protocol.md](./P780BT_protocol.md) &middot;
 **Live demo:** <https://alexluzik.github.io/p780bt-web/>
 <sub>(replace with your own GitHub user when forking)</sub>
 
@@ -56,8 +56,8 @@ The reverse-engineering was done in two stages:
    It parsed the HCI dumps, matched byte patterns against the
    decompiled `com.project.aimotech.*` Java sources, built up the
    request / response tables that now live in
-   [`P780BT_protocol.md`](./printer_web/P780BT_protocol.md), and turned them into
-   the running web client in `printer_web/`.
+   [`P780BT_protocol.md`](./P780BT_protocol.md), and turned them into
+   the running web client now shipped at the repository root.
 
 The rest of the repository — architecture, UI, print pipeline, raster
 rotation, templates, responsive layout, everything — was iterated on
@@ -108,10 +108,9 @@ protocol reference should be enough to adapt the client to your needs.
 1. **Pair the printer** with your operating system's Bluetooth
    settings, so it appears as a Standard Serial over Bluetooth COM /
    tty port.
-2. **Serve the `printer_web/` directory** as static files. Any static
-   server works; the simplest:
+2. **Serve the repository root** as static files. Any static server
+   works; the simplest:
    ```sh
-   cd printer_web
    python -m http.server 8000
    ```
    Then open <http://localhost:8000> in Chrome/Edge.
@@ -126,26 +125,22 @@ protocol reference should be enough to adapt the client to your needs.
 
 ## Hosting it yourself / GitHub Pages
 
-The repo ships with a ready-to-use Pages workflow at
-[`.github/workflows/pages.yml`](./.github/workflows/pages.yml). It
-uploads only the `printer_web/` directory as the Pages artefact, so
-the published site serves `index.html` from its root URL (README,
-LICENSE and the protocol spec stay off the site).
+The app lives at the repository root, so GitHub Pages publishes it
+with zero configuration files — no workflow, no build step.
 
 **One-time setup after you fork / push:**
 
 1. Go to **Settings → Pages** on your repository.
-2. Under *Build and deployment → Source*, pick **GitHub Actions**.
-3. Push to the `main` branch — or hit *Run workflow* on the *Deploy to
-   GitHub Pages* action — and the app will be live at
-   `https://<your-user>.github.io/p780bt-web/` within a minute or two.
+2. Under *Build and deployment → Source*, pick **Deploy from a branch**.
+3. Pick branch **`main`** and folder **`/ (root)`**, then *Save*.
+4. Within a minute the app is live at
+   `https://<your-user>.github.io/p780bt-web/`.
 
 Every subsequent push to `main` re-deploys automatically.
 
-You can of course also just serve `printer_web/` from any other static
-host (Netlify, Cloudflare Pages, Vercel, plain Nginx, `python -m
-http.server`). The app is three static files — nothing to build, no
-API backend.
+The app is three static files — nothing to build, no API backend — so
+it also drops into any other static host (Netlify, Cloudflare Pages,
+Vercel, plain Nginx, `python -m http.server`).
 
 ## Project layout
 
@@ -154,14 +149,10 @@ API backend.
 ├── README.md                 ← this file
 ├── LICENSE.md                ← MIT + scope clarification
 ├── .gitignore
-├── .github/
-│   └── workflows/
-│       └── pages.yml         ← auto-deploy printer_web/ to GitHub Pages
-└── printer_web/              ← the actual application (published as the site)
-    ├── index.html            ← all markup (nav, views, modals)
-    ├── styles.css            ← custom dark-theme overlay on Bootstrap
-    ├── app.js                ← everything else (see below)
-    └── P780BT_protocol.md    ← full reverse-engineered protocol spec
+├── index.html                ← all markup (nav, views, modals)
+├── styles.css                ← custom dark-theme overlay on Bootstrap
+├── app.js                    ← everything else (see below)
+└── P780BT_protocol.md        ← full reverse-engineered protocol spec
 ```
 
 ### About `app.js`
@@ -222,7 +213,7 @@ Loaded from public CDNs — no bundler, no `node_modules`:
 
 Everything this client knows about the wire format — request bytes,
 response tags, payload layouts, firmware quirks — is documented in
-[**P780BT_protocol.md**](./printer_web/P780BT_protocol.md), including the U.S.
+[**P780BT_protocol.md**](./P780BT_protocol.md), including the U.S.
 legal basis for the reverse-engineering that produced it.
 
 ## License & legal

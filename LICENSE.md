@@ -27,10 +27,10 @@ DEALINGS IN THE SOFTWARE.
 This license covers only the **original material authored by
 Oleksandr Luzin** in this repository:
 
-- `printer_web/app.js`, `printer_web/index.html`, `printer_web/styles.css`
-  — the Web Serial client for the P780BT printer.
-- `printer_web/P780BT_protocol.md` — the original prose, tables and
-  structure of the protocol reference document.
+- `app.js`, `index.html`, `styles.css` — the Web Serial client for
+  the P780BT printer.
+- `P780BT_protocol.md` — the original prose, tables and structure of
+  the protocol reference document.
 - `LICENSE.md`, `README.md`.
 
 It does **not** cover, and makes no claim over:
