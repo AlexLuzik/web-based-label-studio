@@ -6,7 +6,8 @@ save templates, and configure the device without installing anything.
 
 Runs directly in **Chrome** or **Edge** on desktop via the
 [Web Serial API](https://wicg.github.io/serial/). No build step, no
-server, no native dependencies — just three static files.
+backend, no native dependencies — a handful of static files behind a
+static HTTP server (the Chromium module loader needs `http(s)://`).
 
 **Author:** [Oleksandr Luzin](https://luzin.cc) &middot;
 **License:** [MIT](./LICENSE.md) &middot;
@@ -32,8 +33,8 @@ directly — over the open Bluetooth Serial profile the device already
 advertises — from an ordinary browser tab. It needs **nothing** beyond
 access to the serial port the user explicitly picks. No accounts, no
 telemetry, no SDKs, no background services, no uploads. The entire
-client is three static files; you can read every byte of it before
-clicking *Connect*.
+client is a handful of plain static files; you can read every byte of
+it before clicking *Connect*.
 
 It turned out to also be noticeably faster, friendlier on desktop, and
 easier to keep on an offline machine than the vendor app, but the
@@ -108,14 +109,13 @@ protocol reference should be enough to adapt the client to your needs.
 1. **Pair the printer** with your operating system's Bluetooth
    settings, so it appears as a Standard Serial over Bluetooth COM /
    tty port.
-2. **Serve the repository root** as static files. Any static server
-   works; the simplest:
+2. **Serve the repository root** as static files. The app is now an
+   ES module (`import`/`export`), and Chrome blocks module loading
+   from `file://` URLs, so a local server is required. The simplest:
    ```sh
    python -m http.server 8000
    ```
    Then open <http://localhost:8000> in Chrome/Edge.
-   You can also just open `index.html` directly (`file://`) — Web
-   Serial works over file URLs in most browsers.
 3. **Click "Connect printer"** in the hero screen. In the picker
    dialog, select the entry labelled **P780BT** or **JL_SPP**.
    Skip anything labelled *Peripheral Bluetooth* or *Standard Serial
@@ -138,9 +138,9 @@ with zero configuration files — no workflow, no build step.
 
 Every subsequent push to `main` re-deploys automatically.
 
-The app is three static files — nothing to build, no API backend — so
-it also drops into any other static host (Netlify, Cloudflare Pages,
-Vercel, plain Nginx, `python -m http.server`).
+The app is a handful of plain static files — nothing to build, no API
+backend — so it also drops into any other static host (Netlify,
+Cloudflare Pages, Vercel, plain Nginx, `python -m http.server`).
 
 ## Project layout
 
@@ -151,38 +151,68 @@ Vercel, plain Nginx, `python -m http.server`).
 ├── .gitignore
 ├── index.html                ← all markup (nav, views, modals)
 ├── styles.css                ← custom dark-theme overlay on Bootstrap
-├── app.js                    ← everything else (see below)
+├── app.js                    ← UI / designer / queue (see below)
+├── printer/                  ← pluggable printer driver layer
+│   ├── transport.js          ← generic Web Serial + framing parser
+│   ├── driver-base.js        ← abstract Driver (EventTarget + waitForTag)
+│   ├── p780bt.js             ← concrete P780BT driver
+│   └── index.js              ← createDriver() factory + registry
 └── P780BT_protocol.md        ← full reverse-engineered protocol spec
 ```
 
+### About `printer/`
+
+All protocol-specific code lives behind a **Driver** contract. `app.js`
+never references wire bytes, response tags, DPI constants, or raster
+layout directly — it talks to the active driver through events
+(`connected`, `frame`, `tx`, `rx`, `identity-failed`, …) and high-level
+method calls (`driver.connect()`, `driver.readAll()`,
+`driver.rasterize(canvas)`, `driver.sendRaster(bytes)`,
+`driver.beginJob()`/`endJob()`).
+
+Adding support for another Bluetooth thermal printer is a matter of:
+
+1. Writing a new file like `printer/other-model.js` that exports a
+   class extending `Driver` (see `driver-base.js` for the required
+   overrides — `_createParser`, `_decodeFrame`, `_verifyIdentity`,
+   `rasterize`, `sendRaster`, `beginJob`, `endJob`, and the
+   `model` / `dpi` / `commands` / `settings` / `actions` metadata).
+2. One line in `printer/index.js`:
+   `registerDriver('other-model', OtherModelDriver);`.
+3. Creating it instead of `'p780bt'` in `app.js` (or adding a model
+   selector UI — the registry already supports it via `listDrivers()`).
+
+Everything above that — designer, inspector, queue, templates, UI —
+runs unchanged against any driver that honours the contract.
+
+For debugging, the running driver is exposed as `window.BTPrinter.driver`
+in DevTools (along with the driver classes and the `P780BT_CONSTANTS`
+table).
+
 ### About `app.js`
 
-Everything JavaScript lives in a single file (≈3800 lines). It used to
-be split as `app.js` (Web Serial + protocol) plus `label_designer.js`
-(canvas + queue + templates), exchanging state through `window.*`.
-The two halves were merged into one module-scope script — same load
-order, no indirection, single `DOMContentLoaded` entry point.
+UI-only now (≈3100 lines). Sections top to bottom:
 
-File sections, top to bottom:
-
-1. Protocol constants (request / response tables, color maps).
-2. Stream parser + `SerialLink` class (Web Serial wrapper).
-3. UI wiring — status badge, hero, connect/disconnect, Advanced
-   offcanvas, `setField` / `setStatus` helpers, toast system.
-4. Designer constants (DPI, fonts, text effects, barcode symbologies,
-   QR kinds).
-5. Element model + default elements + `elementText()` (text /
+1. Driver bootstrap — `createDriver('p780bt')`, event listeners that
+   translate driver events into DOM updates (status badge, battery
+   bar, material swatches, Advanced log, wrong-endpoint modal).
+2. Thin command wrappers (`applySetting`, `applyAction`) that add the
+   write-mode gate and danger-action confirm dialog around the
+   driver's pure methods.
+3. Designer constants (DPI / PX_PER_MM read from `driver`, fonts,
+   text effects, barcode symbologies, QR kinds).
+4. Element model + default elements + `elementText()` (text /
    counter).
-6. Rendering (`renderClean`, `drawElement`, bwip-js wrappers, icon
+5. Rendering (`renderClean`, `drawElement`, bwip-js wrappers, icon
    picker + bitmap cache).
-7. Hit test, drag / resize, snapping, centering.
-8. Inspector / element list.
-9. Print queue + per-item copies + print-confirmation modal + the
-   actual print pipeline (`canvasToMonoBytes`, `monoToRaster`,
-   `printQueue`).
-10. Templates — CRUD in `localStorage`, export / import, gallery.
-11. Keyboard shortcuts + help popover.
-12. Single `DOMContentLoaded` calling `main()` then
+6. Hit test, drag / resize, snapping, centering.
+7. Inspector / element list.
+8. Print queue + per-item copies + print-confirmation modal +
+   `printQueue()` (drives `driver.rasterize` / `beginJob` /
+   `sendRaster` / `endJob`).
+9. Templates — CRUD in `localStorage`, export / import, gallery.
+10. Keyboard shortcuts + help popover.
+11. Single `DOMContentLoaded` calling `main()` then
     `initLabelDesigner()`.
 
 ## Runtime dependencies

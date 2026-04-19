@@ -997,7 +997,10 @@
   </div>
 </div>
 
-<script src="./app.js" defer></script>
+<!-- The app is an ES module (`import` from ./printer/*). It must be
+     served over http(s) — `file://` is blocked by Chrome's module
+     loader. `python -m http.server 8000` in the repo root is enough. -->
+<script type="module" src="./app.js"></script>
 
 <!-- Small glue: show/hide hero + status strip based on connection state (no JS file edits) -->
 <script>

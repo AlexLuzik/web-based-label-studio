@@ -1,458 +1,56 @@
 // =====================================================================
-//  P780BT Label Printer — single-file front-end
+//  BT Label Printer — UI, designer, queue, templates
 // ---------------------------------------------------------------------
 //  Author:   Oleksandr Luzin <https://luzin.cc>
 //  Source:   https://luzin.cc
 //  License:  MIT
 // ---------------------------------------------------------------------
-//  This script is the whole app: Web Serial connect flow, protocol
-//  decode, status-strip wiring, canvas label designer, element
-//  inspector, print queue, templates, and print pipeline. It used to be
-//  split across `app.js` + `label_designer.js` that exchanged a handful
-//  of globals through `window.*`; collapsing them into one module
-//  removes that indirection and keeps the load order deterministic.
+//  This module is everything UI-shaped: Web Serial UX (status badge,
+//  Connect / Disconnect, Advanced log), the label designer canvas,
+//  the element inspector, the print queue, and template CRUD.
 //
-//  Protocol wire format:
-//      Request   1F 11 <cmd>
-//      Response  1A <tag> <payload>
-//  The printer must be paired in the OS and exposed as a serial port
-//  (SPP) before this page can reach it via the Web Serial API.
+//  Anything printer-specific — protocol bytes, response decoding,
+//  identity check, raster layout, the print-job pipeline — lives in
+//  `./printer/*.js` behind the Driver contract. This file talks to
+//  the driver instance through events + high-level method calls;
+//  swapping to a different model is a matter of registering a
+//  different driver id in `./printer/index.js`.
+//
+//  The app is loaded as an ES module (`<script type="module">` in
+//  index.html). That means it must be served over http(s) — Chrome
+//  blocks module loading from `file://` URLs by default. The README
+//  recommends `python -m http.server 8000` for local dev.
 // =====================================================================
 
 'use strict';
+
+import { createDriver } from './printer/index.js';
+
+// ---------------------------------------------------------------------
+//  Printer driver
+// ---------------------------------------------------------------------
+//  All protocol bytes, frame decoding, identity check, raster layout
+//  and the print-job pipeline live in `./printer/p780bt.js` behind the
+//  Driver contract. Swapping in a new model is a matter of registering
+//  a different driver id in `./printer/index.js` — the UI code below
+//  never references P780BT-specific bytes.
+// ---------------------------------------------------------------------
+
+const driver = createDriver('p780bt');
+// Stash the active driver on the debug namespace so it's reachable
+// from DevTools (`BTPrinter.driver.readAll()` etc).
+if (window.BTPrinter) window.BTPrinter.driver = driver;
+
+// ---------- Utilities used by UI logging ----------
+
+const hex    = b   => b.toString(16).padStart(2, '0');
+const hexStr = arr => Array.from(arr, hex).join(' ');
 
 // Physical tape width (in mm) of the cartridge currently loaded in the
 // printer, or null when no cartridge is present / not yet read. Set from
 // tag 0x40 on every material-detail response; consumed by the designer's
 // cartridge-width validation and the mismatch banner.
 let currentCartridgeWidthMm = null;
-
-// ---------- Protocol ----------
-
-const REQ_PREFIX = [0x1F, 0x11];
-const RESP_PREFIX = 0x1A;
-
-// Only commands that P780BT actually answers.
-const GET_COMMANDS = [
-  { name: 'firmware_version',        cmd: 0x07 },
-  { name: 'battery',                 cmd: 0x08 },
-  { name: 'serial_number',           cmd: 0x09 },
-  { name: 'auto_power_time',         cmd: 0x0E },
-  { name: 'paper_state',             cmd: 0x11 },
-  { name: 'cover_state',             cmd: 0x12 },
-  { name: 'hot_state',               cmd: 0x13 },
-  { name: 'label_type',              cmd: 0x19 },
-  { name: 'bt_mac',                  cmd: 0x20 },
-  { name: 'rfid_remain',             cmd: 0x22, needsCartridge: true },
-  { name: 'rfid_label_info',         cmd: 0x31, needsCartridge: true },
-  { name: 'chip_type',               cmd: 0x38 },
-  { name: 'material_encrypt_detail', cmd: 0x3F, needsCartridge: true },
-];
-
-// SET commands with argument. header + <value bytes>.
-const SET_COMMANDS = {
-  AUTO_POWER:     { header: [0x1B, 0x4E, 0x07] },  // +1 byte, P-series byte*5=min
-  PRINT_DENSITY:  { header: [0x1F, 0x11, 0x02] },  // +1 byte
-  PRINT_SPEED:    { header: [0x1F, 0x11, 0x23] },  // +1 byte
-  LEFT_MARGIN:    { header: [0x1F, 0x11, 0x24] },  // +1 byte
-  PAPER_TYPE:     { header: [0x1F, 0x11, 0x0B] },  // +1 byte (0x0A/0x0B/0x26/0x4E)
-};
-
-// Safe actions (commands with no argument).
-const ACTIONS = {
-  INIT_PRINTER:    { bytes: [0x1B, 0x40],       danger: false, label: 'Init Printer',    hint: 'ESC @ — reset parameters' },
-  FEED_PAPER:      { bytes: [0x1F, 0x11, 0x32], danger: false, label: 'Feed Paper',      hint: 'advance paper' },
-  BACK_PAPER:      { bytes: [0x1F, 0x11, 0x2B], danger: false, label: 'Back Paper',      hint: 'roll paper back' },
-  AUTO_LOCATE:     { bytes: [0x1F, 0x11, 0x25], danger: false, label: 'Auto Locate',     hint: 'find gap between labels' },
-  PRINT_TEST_PAGE: { bytes: [0x1F, 0x11, 0x27], danger: true,  label: 'Print Test',      hint: 'print a test page' },
-  DISCONNECT_BT:   { bytes: [0x1F, 0x11, 0x29], danger: true,  label: 'Disconnect BT',   hint: 'printer will drop the BT connection' },
-};
-
-// Allowed auto-power values for P-series and their human-readable labels
-const AUTO_POWER_OPTIONS = [
-  { value: 0,  label: 'Never' },
-  { value: 1,  label: '5 min' },
-  { value: 3,  label: '15 min' },
-  { value: 6,  label: '30 min' },
-  { value: 12, label: '1 hour' },
-  { value: 24, label: '2 hours' },
-  { value: 48, label: '4 hours' },
-  { value: 96, label: '8 hours' },
-];
-
-// Paper type options (see QuinPrinter.setPaperType)
-// Set PAPER_TYPE argument bytes (what we send). Derived from QuinPrinter.setPaperType.
-const PAPER_TYPE_OPTIONS = [
-  { value: 0x0B, label: 'Continuous' },
-  { value: 0x0A, label: 'Gap (with gaps)' },
-  { value: 0x26, label: 'Black mark' },
-  { value: 0x4E, label: 'Other / Black mark card' },
-];
-
-// Expected payload length per response tag. null = variable length.
-const RESP_LEN = {
-  0x03: 1,   // HOT_STATE
-  0x04: 1,   // BATTERY
-  0x05: 1,   // COVER_STATE
-  0x06: 1,   // PAPER_STATE
-  0x07: 3,   // FIRMWARE_VERSION
-  0x08: 15,  // SN
-  0x09: 1,   // AUTO_POWER_TIME
-  0x0C: 1,   // LABEL_TYPE
-  0x0D: 12,  // BT_MAC (12 ASCII hex)
-  0x0E: 1,
-  0x0F: 1,
-  0x15: 3,   // RFID_REMAIN
-  0x16: 0,
-  0x17: 1,   // BT_CHIP_TYPE
-  0x20: 1,
-  0x31: 3,   // RFID_LABEL_INFO
-  0x35: 1,
-  0x3B: 3,
-  0x3C: 0,
-  0x3E: 1,
-  0x3F: 1,
-  0x40: 14,  // MATERIAL_ENCRYPT_DETAIL
-  0x4B: 2,
-  0x5E: 1,
-  0x99: null,
-};
-
-// Battery markers; anything else is a raw 0..100 percentage
-const BATTERY_MARKERS = {
-  0xA1: { name: 'High',   hint: '~full' },
-  0xA2: { name: 'Medium', hint: '~50%' },
-  0xA3: { name: 'Low',    hint: '~30%' },
-  0xA4: { name: 'Fault',  hint: 'dry/error' },
-};
-
-// P-series (P780BT): byte * 5 minutes
-const AUTO_POWER_P = {
-  0: 'Never', 1: '5 min', 3: '15 min', 6: '30 min',
-  12: '1 h', 24: '2 h', 48: '4 h', 96: '8 h',
-};
-
-// Hardware byte from LABEL_TYPE response (tag 0x0C). Same bytes are used as
-// SET_PAPER_TYPE arguments: setPaperType enum 0→0x0B, 1/2→0x0A, 3→0x26, 4→0x4E.
-const LABEL_TYPE_MAP = {
-  0x0A: 'Gap',
-  0x0B: 'Continuous',
-  0x26: 'Black mark',
-  0x4E: 'Other',
-};
-// Material detail UI enum (from PerformanceShareTemplate.java et al.). The
-// `materialPaperType` byte in tag 0x40 uses this coding, NOT the raw hardware byte.
-// 0=连续纸 continuous, 1/2=间隙纸 gap, 3=黑标纸 black mark, 4=黑标卡纸 black-mark card.
-const PAPER_TYPE_MAP = {
-  0: 'Continuous',
-  1: 'Gap',
-  2: 'Gap',
-  3: 'Black mark',
-  4: 'Black mark card',
-};
-// Cover type on P780BT. The app only reacts to `== 1` (transparent film → mirrored
-// print). Other values are observed but undocumented in the client SDK.
-const COVER_TYPE_MAP = {
-  0: 'Normal',
-  1: 'Transparent film (mirror print)',
-};
-
-// from RibbonColorUtils.java
-const FONT_COLOR_MAP = {
-  1: '#FEFEFE', 2: '#2D2926', 3: '#E73C3E', 4: '#FDDA25',
-  5: '#9EA2A2', 6: '#84764D', 7: '#0077CE', 8: '#00892F', 9: '#696158',
-};
-const BG_COLOR_MAP = {
-  1: '#FEFEFE', 2: '#FFAA4D', 3: '#E6BEDD', 4: '#2D2926',
-  5: '#E73C3E', 6: '#FDDA25', 7: '#84764D', 8: '#0077CF', 9: '#00892F',
-  10: '#EFF8FA', 11: '#EFF8FA', 12: '#696158', 13: '#C7B2DE', 14: '#674230',
-};
-const COLOR_NAMES = {
-  '#FEFEFE': 'white', '#2D2926': 'black', '#E73C3E': 'red', '#FDDA25': 'yellow',
-  '#9EA2A2': 'gray', '#84764D': 'olive', '#0077CE': 'blue', '#0077CF': 'blue',
-  '#00892F': 'green', '#696158': 'dark gray', '#FFAA4D': 'orange',
-  '#E6BEDD': 'pink', '#EFF8FA': 'off-white', '#C7B2DE': 'lavender',
-  '#674230': 'dark brown',
-};
-
-// ---------- Utilities ----------
-
-const hex = b => b.toString(16).padStart(2, '0');
-const hexStr = arr => Array.from(arr, hex).join(' ');
-
-function asciiDecode(bytes) {
-  return new TextDecoder('ascii').decode(new Uint8Array(bytes));
-}
-
-// ---------- Frame decoder ----------
-
-function decodeFrame(tag, payload) {
-  const p = payload;
-
-  if (tag === 0x03) {
-    const v = p[0] || 0;
-    const map = { 0xA8: 'Normal', 0xA9: 'Overheat' };
-    return { fields: { hot_state: map[v] || `Unknown 0x${hex(v)}` } };
-  }
-  if (tag === 0x04) {
-    const v = p[0] || 0;
-    if (BATTERY_MARKERS[v]) {
-      const m = BATTERY_MARKERS[v];
-      return { fields: { battery: `${m.name} (${m.hint})` }, batteryMarker: v };
-    }
-    // P780BT firmware quirk: when fully charged (or on AC), the printer
-    // replies with 0x00 instead of a real percentage. A 0% battery would
-    // have shut the printer down before it could answer at all, so it's
-    // safe to treat 0x00 as "full" and light the gauge green.
-    if (v === 0) return { fields: { battery: '100%' }, batteryPct: 100 };
-    return { fields: { battery: `${v}%` }, batteryPct: v };
-  }
-  if (tag === 0x05) {
-    const v = p[0] || 0;
-    const map = { 0x98: 'Closed', 0x99: 'Open' };
-    return { fields: { cover_state: map[v] || `Unknown 0x${hex(v)}` } };
-  }
-  if (tag === 0x06) {
-    const v = p[0] || 0;
-    if (v === 0x88) return { fields: { paper_state: 'No paper' } };
-    if (v === 0x89) return { fields: { paper_state: 'OK' } };
-    return { fields: { paper_state: `Unknown (0x${hex(v)})` } };
-  }
-  if (tag === 0x07) {
-    if (p.length >= 3) return { fields: { firmware_version: `${p[0]}.${p[1]}.${p[2]}` } };
-    return { fields: { firmware_version: hexStr(p) } };
-  }
-  if (tag === 0x08) {
-    const filt = p.map(b =>
-      (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) ? b : 0x38);
-    return { fields: { serial_number: asciiDecode(filt) } };
-  }
-  if (tag === 0x09) {
-    const v = p[0] ?? 0;
-    const human = AUTO_POWER_P[v] ?? (v === 0 ? 'Never' : `${v * 5} min (raw ${v})`);
-    return { fields: { auto_power_time: `${human}  [byte=${v}]` } };
-  }
-  if (tag === 0x0C) {
-    const v = p[0] || 0;
-    return { fields: { label_type: LABEL_TYPE_MAP[v] || `Other (0x${hex(v)})` } };
-  }
-  if (tag === 0x0D) {
-    // BT_MAC: 12 ASCII hex → "XX:XX:XX:XX:XX:XX"
-    const s = asciiDecode(p);
-    if (s.length === 12) {
-      const mac = s.match(/.{2}/g).join(':');
-      return { fields: { bt_mac: mac } };
-    }
-    return { fields: { bt_mac: s } };
-  }
-  if (tag === 0x15 && p.length >= 3) {
-    const rfid = (p[1] << 8) | p[2];
-    const kind = ({ 0: 'carbon_belt', 1: 'paper', 2: 'ribbon' })[p[0]] || `type${p[0]}`;
-    return { fields: { rfid_remain: `${kind} count=${rfid}` } };
-  }
-  if (tag === 0x17) {
-    const v = p[0] || 0;
-    const jerry = [3, 7, 8].includes(v);
-    return { fields: { bt_chip_type: `0x${hex(v)} (${jerry ? 'Jerry/JieLi' : 'Other'})` } };
-  }
-  if (tag === 0x31 && p.length >= 3) {
-    const rfid = (p[1] << 8) | p[2];
-    return { fields: { rfid_label_info: `type=${p[0]} id=${String(rfid).padStart(5, '0')}` } };
-  }
-  if (tag === 0x35) {
-    const v = p[0] || 0;
-    return { fields: { charge_mode: v === 2 ? 'Charging' : `Not charging (0x${hex(v)})` } };
-  }
-  if (tag === 0x3F) {
-    const v = p[0] || 0;
-    return { fields: { material_hint: `ERROR 0x${hex(v)}` } };
-  }
-  if (tag === 0x40 && p.length >= 14) {
-    const rfid    = (p[0] << 8) | p[1];
-    const cat     = p[2];
-    const baseC   = p[4];
-    const textC   = p[5];
-    const cover   = p[6];
-    const paper   = p[7];
-    const width   = p[12];
-    const length_ = p[13];
-    const bgHex = BG_COLOR_MAP[baseC] || null;
-    const fgHex = FONT_COLOR_MAP[textC] || null;
-    const empty = rfid === 0 && width === 0 && length_ === 0;
-    return {
-      fields: {
-        material_rfid: empty ? '—' : String(rfid).padStart(5, '0'),
-        material_cat: cat,
-        material_paper: PAPER_TYPE_MAP[paper] ?? `code ${paper}`,
-        material_cover: COVER_TYPE_MAP[cover] ?? `Other (code ${cover})`,
-        material_size:
-          (width === 0 && length_ === 0) ? '—'
-            : length_ === 0 ? `${width} mm`
-            : width === 0  ? `${length_} mm`
-            : `${width} × ${length_} mm`,
-        material_bg: bgHex ? `${bgHex} (${COLOR_NAMES[bgHex] || '?'})` : `code ${baseC}`,
-        material_fg: fgHex ? `${fgHex} (${COLOR_NAMES[fgHex] || '?'})` : `code ${textC}`,
-      },
-      swatches: { material_bg: bgHex, material_fg: fgHex },
-      materialEmpty: empty,
-    };
-  }
-  if (tag === 0x99) {
-    if (p.length < 1) return { fields: { consumables_uid: 'Empty' } };
-    const n = p[0];
-    const data = p.slice(1, 1 + n);
-    if (n === 0) return { fields: { consumables_uid: 'Not available' } };
-    return { fields: { consumables_uid: Array.from(data, hex).join('').toUpperCase() } };
-  }
-
-  return { fields: { [`tag_0x${hex(tag)}`]: hexStr(p) } };
-}
-
-// ---------- Stream parser ----------
-
-class ResponseParser {
-  constructor(onFrame) {
-    this.buf = [];
-    this.onFrame = onFrame;
-  }
-  feed(bytes) {
-    for (const b of bytes) this.buf.push(b);
-    while (true) {
-      const start = this.buf.indexOf(RESP_PREFIX);
-      if (start < 0) {
-        // No frame prefix anywhere in the buffer — everything inside is
-        // orphan bytes that don't belong to a frame. Log them so we can
-        // debug silent truncation (e.g. wrong RESP_LEN for some tag).
-        if (this.buf.length > 0) {
-          logError(`parser: discarding ${this.buf.length} orphan byte(s): ${Array.from(this.buf, b => b.toString(16).padStart(2, '0')).join(' ')}`);
-        }
-        this.buf.length = 0;
-        return;
-      }
-      if (start > 0) {
-        // Bytes before the prefix are orphaned — probably a RESP_LEN too
-        // short for some tag above. Log for diagnostics before skipping.
-        const discarded = this.buf.slice(0, start);
-        logError(`parser: skipping ${discarded.length} byte(s) before next frame: ${Array.from(discarded, b => b.toString(16).padStart(2, '0')).join(' ')}`);
-        this.buf.splice(0, start);
-      }
-      if (this.buf.length < 2) return;
-      const tag = this.buf[1];
-      const expected = RESP_LEN[tag];
-
-      if (expected === null || expected === undefined) {
-        if (tag === 0x99) {
-          if (this.buf.length < 3) return;
-          const n = this.buf[2];
-          const total = 3 + n;
-          if (this.buf.length < total) return;
-          const payload = this.buf.slice(2, total);
-          this.onFrame(tag, payload);
-          this.buf.splice(0, total);
-          continue;
-        }
-        // unknown tag — best-effort: assume 1-byte payload
-        if (this.buf.length < 3) return;
-        const payload = this.buf.slice(2, 3);
-        this.onFrame(tag, payload);
-        this.buf.splice(0, 3);
-        continue;
-      }
-
-      const total = 2 + expected;
-      if (this.buf.length < total) return;
-      const payload = this.buf.slice(2, total);
-      this.onFrame(tag, payload);
-      this.buf.splice(0, total);
-    }
-  }
-}
-
-// ---------- Serial ----------
-
-class SerialLink {
-  constructor(handlers) {
-    this.port = null;
-    this.reader = null;
-    this.writer = null;
-    this.keepReading = false;
-    this.parser = new ResponseParser((tag, payload) => handlers.onFrame(tag, payload));
-    this.handlers = handlers;
-  }
-
-  get isOpen() { return !!this.port; }
-
-  async connect() {
-    if (!('serial' in navigator)) throw new Error('Web Serial API is not supported');
-    const port = await navigator.serial.requestPort({});
-    await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none' });
-    this.port = port;
-    this.writer = port.writable.getWriter();
-    this.keepReading = true;
-    this._readLoop();
-    const info = port.getInfo ? port.getInfo() : {};
-    this.handlers.onConnected(info);
-  }
-
-  async _readLoop() {
-    try {
-      while (this.keepReading && this.port && this.port.readable) {
-        this.reader = this.port.readable.getReader();
-        try {
-          while (this.keepReading) {
-            const { value, done } = await this.reader.read();
-            if (done) break;
-            if (value && value.length) {
-              this.handlers.onRx(value);
-              this.parser.feed(value);
-            }
-          }
-        } catch (e) {
-          this.handlers.onError(`read: ${e.message}`);
-          break;
-        } finally {
-          try { this.reader.releaseLock(); } catch {}
-          this.reader = null;
-        }
-      }
-    } finally {
-      await this._cleanup();
-      this.handlers.onDisconnected();
-    }
-  }
-
-  async send(bytes, silent = false) {
-    if (!this.writer) throw new Error('not connected');
-    await this.writer.write(new Uint8Array(bytes));
-    if (!silent) this.handlers.onTx(bytes);
-  }
-
-  async disconnect() {
-    this.keepReading = false;
-    try { if (this.reader) await this.reader.cancel(); } catch {}
-    await this._cleanup();
-  }
-
-  /**
-   * Release Chrome's grant on the underlying port in addition to closing
-   * it. This is the programmatic equivalent of un-pairing + re-pairing
-   * the BT device in the OS: on macOS the `/dev/tty.*` node backing a
-   * BT-SPP link can land in a zombie state after a disconnect where the
-   * OS still accepts writes but routes nothing through. `port.forget()`
-   * forces Chrome to drop its reference so the next `requestPort()`
-   * triggers a fresh OS-level handshake, which actually re-creates the
-   * tty node cleanly.
-   *
-   * Cost on healthy platforms (Windows, Linux): the user has to pick
-   * the printer from the picker again on the next connect. That's the
-   * same UX they already get — `requestPort()` always shows the picker.
-   */
-  async forget() {
-    const p = this.port;
-    await this.disconnect();
-    try { if (p && typeof p.forget === 'function') await p.forget(); } catch {}
-  }
-}
 
 // ---------- UI ----------
 
@@ -557,10 +155,13 @@ function setField(name, value, extra) {
   }
 }
 
-// Build the command-button list
+// Build the command-button list from whatever GET commands the active
+// driver supports. The button builder is model-agnostic — as long as
+// the driver exposes `{ name, cmd, needsCartridge? }` entries, this
+// renders them identically for any printer.
 function buildCommandButtons() {
   ui.cmdButtons.innerHTML = '';
-  for (const c of GET_COMMANDS) {
+  for (const c of driver.commands) {
     const b = document.createElement('button');
     b.className = 'btn btn-outline-secondary';
     b.disabled = true;
@@ -574,7 +175,7 @@ function buildCommandButtons() {
     b.addEventListener('click', () => sendCommand(c.cmd));
     ui.cmdButtons.appendChild(b);
   }
-  ui.cmdCount.textContent = String(GET_COMMANDS.length);
+  ui.cmdCount.textContent = String(driver.commands.length);
 }
 
 function setButtonsEnabled(enabled) {
@@ -586,16 +187,17 @@ function setButtonsEnabled(enabled) {
 }
 
 function buildSettingsUi() {
-  // Auto power — select
+  // Auto power — select. Options come from the driver so a model with
+  // a different ladder of allowed values renders the right dropdown.
   const apSel = document.querySelector('#selAutoPower');
   if (apSel) {
-    apSel.innerHTML = AUTO_POWER_OPTIONS.map(o =>
+    apSel.innerHTML = driver.autoPowerOptions.map(o =>
       `<option value="${o.value}">${o.label}</option>`).join('');
   }
-  // Paper type — select
+  // Paper type — select (driver-provided for the same reason).
   const ptSel = document.querySelector('#selPaperType');
   if (ptSel) {
-    ptSel.innerHTML = PAPER_TYPE_OPTIONS.map(o =>
+    ptSel.innerHTML = driver.paperTypeOptions.map(o =>
       `<option value="${o.value}">${o.label}</option>`).join('');
   }
 
@@ -624,11 +226,13 @@ function buildSettingsUi() {
     applySetting('LEFT_MARGIN', v);
   });
 
-  // Actions — build the buttons dynamically
+  // Actions — build the buttons dynamically from the driver's action
+  // list. Each action entry carries its own label / hint / danger flag
+  // so this loop stays identical across models.
   const actBox = document.querySelector('#actionButtons');
   if (actBox) {
     actBox.innerHTML = '';
-    for (const [name, a] of Object.entries(ACTIONS)) {
+    for (const [name, a] of Object.entries(driver.actions)) {
       const btn = document.createElement('button');
       btn.className = `btn ${a.danger ? 'btn-outline-danger' : 'btn-outline-secondary'} btn-sm`;
       btn.disabled = true;
@@ -650,7 +254,7 @@ function buildSettingsUi() {
     applyTuningVisibility();
     sw.addEventListener('change', () => {
       // Refresh the enabled state of write controls
-      const portOpen = link.isOpen;
+      const portOpen = driver.isConnected;
       $$('[data-write-control]').forEach(el => el.disabled = !(portOpen && sw.checked));
       applyTuningVisibility();
       logLine('info', `Write mode: ${sw.checked ? 'ON' : 'OFF'}`);
@@ -660,139 +264,160 @@ function buildSettingsUi() {
 
 // ---------- Exchange logic ----------
 
-// Global helpers for label_designer.js
-// Shared across the merged script so other modules (designer, queue) can
+// Shared across the merged script so designer / queue sections can
 // funnel diagnostic lines into the same Advanced panel.
 const logInfo  = (text) => logLine('info', text);
 const logError = (text) => logLine('error', text);
 
-const link = new SerialLink({
-  onConnected: (info) => {
-    setStatus('connected', info.usbProductId ? `USB ${info.usbProductId}` : 'connected');
-    setButtonsEnabled(true);
-    // Show shimmer skeletons in the status strip until READ ALL populates it.
-    const strip = document.getElementById('statusStrip');
-    if (strip) {
-      strip.classList.add('is-loading');
-      strip.setAttribute('aria-busy', 'true');
-    }
-    logLine('info', 'Connected. Verifying device…');
-    // Verify this is a P780BT-family printer before we start pumping commands at it.
-    verifyPrinterIdentity()
-      .then(ok => {
-        if (!ok) return;
-        // Auto-refresh key printer data so the status strip and cards populate
-        // immediately instead of showing "—" until the user clicks READ ALL.
-        readAll().catch(() => {});
-      })
-      .catch(() => {});
-  },
-  onDisconnected: () => {
-    setStatus('disconnected', 'disconnected');
-    setButtonsEnabled(false);
-    // P1.18 — clean the exchange log on disconnect so a fresh session
-    // starts with a blank scrollback instead of accumulating forever.
-    // `cmdCount` reflects the number of available GET_COMMANDS (a static count
-    // set in buildCommandButtons), not a per-session counter — leave it alone.
-    if (ui.log) ui.log.innerHTML = '';
-    // Remove the shimmer just in case we disconnected before READ ALL.
-    const strip = document.getElementById('statusStrip');
-    if (strip) {
-      strip.classList.remove('is-loading');
-      strip.removeAttribute('aria-busy');
-    }
-    logLine('info', 'Disconnected');
-  },
-  onTx: (bytes) => logLine('tx', `TX: ${hexStr(bytes)}`),
-  onRx: (bytes) => logLine('rx', `RX: ${hexStr(bytes)}`),
-  onFrame: (tag, payload) => handleFrame(tag, payload),
-  onError: (msg) => {
-    logLine('error', 'ERROR: ' + msg);
-    setStatus('error', 'error');
-  },
+// ---------- Driver event → UI wiring ----------
+//
+// All protocol detail lives inside the driver; here we only translate
+// high-level events into DOM updates: status badge, the shimmer, the
+// battery bar, the material swatches, the Advanced log, and the
+// wrong-endpoint modal.
+
+driver.addEventListener('connected', (ev) => {
+  const info = (ev.detail && ev.detail.info) || {};
+  setStatus('connected', info.usbProductId ? `USB ${info.usbProductId}` : 'connected');
+  setButtonsEnabled(true);
+  // Show shimmer skeletons in the status strip until READ ALL populates it.
+  const strip = document.getElementById('statusStrip');
+  if (strip) {
+    strip.classList.add('is-loading');
+    strip.setAttribute('aria-busy', 'true');
+  }
+  logLine('info', 'Connected.');
+  // Auto-refresh key printer data so the status strip and cards
+  // populate immediately instead of showing "—" until READ ALL.
+  driver.readAll().catch(() => {});
 });
 
-// `link` is shared directly with the designer / queue sections below —
-// no window-namespacing needed now that everything lives in one script.
+driver.addEventListener('disconnected', () => {
+  setStatus('disconnected', 'disconnected');
+  setButtonsEnabled(false);
+  // Clean the exchange log on disconnect so a fresh session starts
+  // with a blank scrollback instead of accumulating forever.
+  if (ui.log) ui.log.innerHTML = '';
+  // Remove the shimmer just in case we disconnected before READ ALL.
+  const strip = document.getElementById('statusStrip');
+  if (strip) {
+    strip.classList.remove('is-loading');
+    strip.removeAttribute('aria-busy');
+  }
+  logLine('info', 'Disconnected');
+});
 
-function handleFrame(tag, payload) {
-  const res = decodeFrame(tag, payload);
-  const fieldsStr = Object.entries(res.fields).map(([k, v]) => `${k}=${v}`).join('  ');
+driver.addEventListener('tx',  (ev) => logLine('tx', `TX: ${hexStr(ev.detail.bytes)}`));
+driver.addEventListener('rx',  (ev) => logLine('rx', `RX: ${hexStr(ev.detail.bytes)}`));
+driver.addEventListener('log', (ev) => {
+  const kind = ev.detail.level === 'error' ? 'error' : 'info';
+  logLine(kind, ev.detail.text);
+});
+driver.addEventListener('error', (ev) => {
+  logLine('error', 'ERROR: ' + ev.detail.message);
+  setStatus('error', 'error');
+});
+
+// Wrong-endpoint modal. Fires when the identity check rejects the port
+// (usually because the user picked a Standard-Serial / generic BT-SPP
+// node instead of the printer's dedicated entry). The Retry button
+// re-triggers the connect flow so the user can pick the correct port.
+driver.addEventListener('identity-failed', (ev) => {
+  const reason = ev.detail.reason;
+  try {
+    const modalEl = document.getElementById('wrongEndpointModal');
+    if (modalEl && window.bootstrap) {
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.show();
+      const retryBtn = document.getElementById('wrongEndpointRetry');
+      if (retryBtn && !retryBtn._wired) {
+        retryBtn._wired = true;
+        retryBtn.addEventListener('click', () => {
+          modal.hide();
+          document.getElementById('btnConnect')?.click();
+        });
+      }
+    } else if (typeof window.showToast === 'function') {
+      window.showToast(reason, 'error');
+    }
+  } catch {}
+});
+
+// Frame → UI updates. The driver hands us the decoded payload
+// (`fields`, `swatches`, `batteryPct`, `materialEmpty`,
+// `cartridgeWidthMm`); our job is to paint the DOM.
+driver.addEventListener('frame', (ev) => {
+  const { tag, payload, fields, swatches, batteryPct, batteryMarker, materialEmpty, cartridgeWidthMm } = ev.detail;
+  const fieldsStr = Object.entries(fields).map(([k, v]) => `${k}=${v}`).join('  ');
   logLine('frame', `FRAME tag=0x${hex(tag)} ${fieldsStr}  (payload: ${hexStr(payload) || '—'})`);
 
-  for (const [k, v] of Object.entries(res.fields)) setField(k, v);
+  for (const [k, v] of Object.entries(fields)) setField(k, v);
 
-  if (res.swatches) {
-    for (const [k, color] of Object.entries(res.swatches)) {
-      // Some swatches (e.g. material_bg) are rendered in TWO places: the
-      // compact strip at the top of the page AND the Paper & cartridge
-      // card on the Printer tab. querySelector only grabs the first one,
-      // which is why the card's background swatch stayed empty — use
-      // querySelectorAll so every occurrence is tinted.
+  if (swatches) {
+    for (const [k, color] of Object.entries(swatches)) {
+      // Some swatches (e.g. material_bg) are rendered in TWO places:
+      // the compact strip at the top of the page AND the Paper &
+      // cartridge card on the Printer tab — use querySelectorAll so
+      // every occurrence is tinted.
       const els = document.querySelectorAll(`[data-swatch="${k}"]`);
       els.forEach(sw => { sw.style.background = color || 'transparent'; });
     }
   }
-  if (res.batteryPct !== undefined) {
-    const pct = Math.max(0, Math.min(100, res.batteryPct));
+  if (batteryPct !== undefined) {
+    const pct = Math.max(0, Math.min(100, batteryPct));
     ui.batteryBar.style.width = `${pct}%`;
     ui.batteryBar.classList.remove('bg-success', 'bg-warning', 'bg-danger');
     ui.batteryBar.classList.add(pct > 50 ? 'bg-success' : pct > 20 ? 'bg-warning' : 'bg-danger');
   }
-  if (res.batteryMarker !== undefined) {
-    const pct = { 0xA1: 90, 0xA2: 50, 0xA3: 20, 0xA4: 0 }[res.batteryMarker] ?? 0;
+  if (batteryMarker !== undefined) {
+    const pct = { 0xA1: 90, 0xA2: 50, 0xA3: 20, 0xA4: 0 }[batteryMarker] ?? 0;
     ui.batteryBar.style.width = `${pct}%`;
     ui.batteryBar.classList.remove('bg-success', 'bg-warning', 'bg-danger');
     ui.batteryBar.classList.add(pct > 50 ? 'bg-success' : pct > 20 ? 'bg-warning' : 'bg-danger');
   }
   if (tag === 0x40) {
     ui.materialHint.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-warning');
-    if (res.materialEmpty) {
+    if (materialEmpty) {
       ui.materialHint.textContent = 'cartridge not detected';
       ui.materialHint.classList.add('text-bg-warning');
       currentCartridgeWidthMm = null;
     } else {
       ui.materialHint.textContent = 'read';
       ui.materialHint.classList.add('text-bg-success');
-      // Expose the physical tape width so the Label Designer can validate
-      // canvas height before queuing a print job.
-      currentCartridgeWidthMm = payload[12] || null;
+      currentCartridgeWidthMm = cartridgeWidthMm ?? null;
     }
-    // P0.2 — re-evaluate the cartridge-mismatch alert after every read.
     if (typeof updateCartridgeMismatch === 'function') updateCartridgeMismatch();
   }
 
-  // Reflect live printer values into the corresponding Settings dropdowns.
-  // Helper: set select value without losing focus or blocking a user who is
-  // currently typing/picking in it.
+  // Reflect live printer values into the corresponding Settings
+  // dropdowns without stealing focus from the user.
   const setSelectIfIdle = (sel, value) => {
     if (!sel) return;
     if (document.activeElement === sel) return;
-    // Only set if the value exists as an option
     const opt = Array.from(sel.options).find(o => String(o.value) === String(value));
     if (opt) sel.value = String(value);
   };
-
   if (tag === 0x09 && payload && payload.length) {
     // AUTO_POWER_TIME response: raw byte maps to the option values in the dropdown
-    // (0, 1, 3, 6, 12, 24, 48, 96 for P-series).
     setSelectIfIdle(document.getElementById('selAutoPower'), payload[0]);
   }
   if (tag === 0x0C && payload && payload.length) {
-    // LABEL_TYPE response: value IS the byte (0x0B, 0x0A, 0x26, 0x4E).
+    // LABEL_TYPE response: value IS the byte
     setSelectIfIdle(document.getElementById('selPaperType'), payload[0]);
   }
-}
+});
+
+// ---------- UI-level command wrappers ----------
+//
+// The driver exposes pure `sendCommand / applySetting / applyAction /
+// readAll` methods. These wrappers add the write-mode gate and the
+// danger-action confirm dialog — both are UI concerns, not protocol
+// concerns, so they stay here.
 
 async function sendCommand(cmd) {
-  try {
-    await link.send([...REQ_PREFIX, cmd]);
-  } catch (e) {
-    logLine('error', 'TX fail: ' + e.message);
-  }
+  try { await driver.sendCommand(cmd); }
+  catch (e) { logLine('error', 'TX fail: ' + e.message); }
 }
-
-// ---------- SET / ACTIONS ----------
 
 function isWriteUnlocked() {
   return !!document.querySelector('#writeMode')?.checked;
@@ -803,20 +428,7 @@ async function applySetting(name, valueByte) {
     logLine('error', 'Write mode is off — toggle the switch in the navbar');
     return false;
   }
-  const entry = SET_COMMANDS[name];
-  if (!entry) {
-    logLine('error', `unknown SET command: ${name}`);
-    return false;
-  }
-  const packet = [...entry.header, valueByte & 0xFF];
-  try {
-    await link.send(packet);
-    logLine('info', `SET ${name} = ${valueByte} (0x${hex(valueByte)})`);
-    return true;
-  } catch (e) {
-    logLine('error', `SET ${name} fail: ${e.message}`);
-    return false;
-  }
+  return driver.applySetting(name, valueByte);
 }
 
 async function applyAction(name) {
@@ -824,189 +436,16 @@ async function applyAction(name) {
     logLine('error', 'Write mode is off — toggle the switch in the navbar');
     return;
   }
-  const act = ACTIONS[name];
-  if (!act) {
-    logLine('error', `unknown action: ${name}`);
-    return;
-  }
-  if (act.danger) {
+  const act = driver.actions[name];
+  if (act && act.danger) {
     const ok = confirm(`Run "${act.label}"?\n\n${act.hint}`);
     if (!ok) { logLine('info', `${name} cancelled`); return; }
   }
-  try {
-    await link.send(act.bytes);
-    logLine('info', `ACTION ${name} → [${hexStr(act.bytes)}]`);
-  } catch (e) {
-    logLine('error', `${name} fail: ${e.message}`);
-  }
+  return driver.applyAction(name);
 }
 
 async function readAll() {
-  for (const c of GET_COMMANDS) {
-    try {
-      await link.send([...REQ_PREFIX, c.cmd]);
-      await new Promise(r => setTimeout(r, 150));
-    } catch (e) {
-      logLine('error', 'TX fail: ' + e.message);
-      return;
-    }
-  }
-}
-
-/**
- * Verify that the newly opened serial port speaks our P780BT protocol.
- *
- * Web Serial cannot filter by anything useful for BT-SPP ports (no USB VID/PID),
- * so we check at the application layer: send the Serial Number request and
- * expect a frame `1A 08 <15 ASCII [0-9A-Z]>` back within a short timeout.
- * If nothing comes, or the frame is malformed, we treat the port as
- * "not a P780BT" and disconnect with a clear toast.
- *
- * Returns true if the device is accepted; false otherwise (and the port is closed).
- */
-async function verifyPrinterIdentity() {
-  // macOS note: the Bluetooth SPP channel frequently needs a moment to
-  // stabilise after a (re)connect — the first packet we send can get
-  // swallowed and/or the printer itself stays in a low-power state for
-  // a beat after pairing. Give the link a small settle delay, a
-  // generous per-attempt timeout, and retry a few times before giving
-  // up. Every attempt is logged so we can diagnose which step fails.
-  const INITIAL_SETTLE_MS = 400;    // wait for the SPP channel before first query
-  const TIMEOUT_MS        = 3000;   // per-attempt
-  const INTER_ATTEMPT_MS  = 500;    // delay between retries
-  const MAX_ATTEMPTS      = 4;
-
-  // Wait for a tag 0x08 (SN response) within the timeout.
-  const waitForSn = () => new Promise(resolve => {
-    const original = link.parser.onFrame;
-    const timer = setTimeout(() => {
-      link.parser.onFrame = original;
-      resolve(null);
-    }, TIMEOUT_MS);
-    link.parser.onFrame = (tag, payload) => {
-      try { original(tag, payload); } catch {}  // let UI log/decode too
-      if (tag === 0x08) {
-        clearTimeout(timer);
-        link.parser.onFrame = original;
-        resolve(payload);
-      }
-    };
-  });
-
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-  try {
-    // Settle period: on a fresh (re)connect, writing into the port too
-    // early means the bytes go into the void — the OS reports success
-    // because the write buffer accepts them, but the remote side never
-    // sees them.
-    logLine('info', `Identity check: settling for ${INITIAL_SETTLE_MS}ms…`);
-    await sleep(INITIAL_SETTLE_MS);
-
-    // Wake the printer before the first query. After a previous session
-    // ended mid-print or with an uncut label, the printer firmware can
-    // stay in a "waiting for more data" state and silently drop status
-    // queries. ESC @ (1B 40, INIT_PRINTER) resets that state without
-    // side-effects on a healthy printer — the reference Android app
-    // does the same thing on reconnect (see QuinPrinter.printBitmapx
-    // and the initConnectInfo preamble).
-    try {
-      logLine('info', 'Identity check: sending INIT_PRINTER (1B 40) to reset state…');
-      await link.send([0x1B, 0x40]);
-      await sleep(200);
-    } catch (wakeErr) {
-      logLine('error', `Identity check: INIT_PRINTER send failed: ${wakeErr.message || wakeErr}`);
-    }
-
-    let payload = null;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !payload; attempt++) {
-      logLine('info', `Identity check: attempt ${attempt}/${MAX_ATTEMPTS} — sending SN query, waiting up to ${TIMEOUT_MS}ms…`);
-      const started = performance.now();
-      const pending = waitForSn();
-      try {
-        await link.send([...REQ_PREFIX, 0x09]);  // SN query
-      } catch (sendErr) {
-        logLine('error', `Identity check: send failed on attempt ${attempt}: ${sendErr.message || sendErr}`);
-        await pending;
-        if (attempt < MAX_ATTEMPTS) await sleep(INTER_ATTEMPT_MS);
-        continue;
-      }
-      payload = await pending;
-      const elapsed = Math.round(performance.now() - started);
-      if (payload) {
-        logLine('info', `Identity check: SN arrived after ${elapsed}ms on attempt ${attempt}.`);
-      } else {
-        logLine('error', `Identity check: no SN after ${elapsed}ms on attempt ${attempt}.`);
-        // Re-ping with INIT_PRINTER every other attempt in case the
-        // first wake-up didn't land.
-        if (attempt < MAX_ATTEMPTS) {
-          if (attempt % 2 === 0) {
-            try {
-              logLine('info', 'Identity check: re-sending INIT_PRINTER before next attempt…');
-              await link.send([0x1B, 0x40]);
-              await sleep(200);
-            } catch {}
-          }
-          await sleep(INTER_ATTEMPT_MS);
-        }
-      }
-    }
-    if (!payload) {
-      fail('This serial port did not answer our identity check — not a P780BT-family printer.');
-      return false;
-    }
-    if (payload.length < 8) {
-      fail('The device answered with an unexpected frame. Not supported.');
-      return false;
-    }
-    // Payload should be 15 ASCII chars in [0-9A-Z]. Require at least 80% to match.
-    let good = 0;
-    for (const b of payload) {
-      if ((b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A)) good++;
-    }
-    const ratio = good / payload.length;
-    if (ratio < 0.6) {
-      fail('The device answered, but the serial number does not look like a P780BT.');
-      return false;
-    }
-    logLine('info', 'Device verified as P780BT-family printer.');
-    return true;
-  } catch (e) {
-    fail('Identity check failed: ' + (e.message || e));
-    return false;
-  }
-
-  function fail(reason) {
-    logLine('error', reason);
-    // P1.19 — surface the wrong-endpoint explanation in a dedicated modal
-    // instead of a transient toast. The modal's Retry button re-triggers
-    // the connect flow so the user can pick the correct port.
-    try {
-      const modalEl = document.getElementById('wrongEndpointModal');
-      if (modalEl && window.bootstrap) {
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        modal.show();
-        const retryBtn = document.getElementById('wrongEndpointRetry');
-        if (retryBtn && !retryBtn._wired) {
-          retryBtn._wired = true;
-          retryBtn.addEventListener('click', () => {
-            modal.hide();
-            document.getElementById('btnConnect')?.click();
-          });
-        }
-      } else if (typeof window.showToast === 'function') {
-        window.showToast(reason, 'error');
-      }
-    } catch {}
-    // Plain disconnect. We tried `link.forget()` here to programmatically
-    // reset macOS's zombie BT-SPP tty after a reconnect — it only drops
-    // Chrome's grant, it does NOT tell macOS to rebuild /dev/tty.*, so
-    // the broken state persists through the next requestPort(). The
-    // only working workaround is user-driven (un-pair + re-pair in
-    // System Settings, or full-quit Chrome); the modal links to the
-    // Bluetooth pane directly.
-    try { link.disconnect(); } catch {}
-  }
+  return driver.readAll();
 }
 
 // ---------- Bootstrap ----------
@@ -1020,33 +459,33 @@ function main() {
   buildCommandButtons();
   buildSettingsUi();
 
-  // Hero Connect CTA: connect only (never toggles off — Disconnect lives
-  // in the navbar and has its own handler below).
+  // Hero Connect CTA: connect only (Disconnect lives in the navbar
+  // and has its own handler below). On success the driver's 'connected'
+  // event listener already flipped the UI and kicked off readAll.
+  // On failure the 'identity-failed' listener may have shown the
+  // wrong-endpoint modal; the 'disconnected' event will reset the
+  // badge — our only extra job here is to log the message.
   ui.btnConnect.addEventListener('click', async () => {
-    if (link.isOpen) return;   // defensive; hero is hidden while connected
+    if (driver.isConnected) return;   // defensive; hero is hidden while connected
     try {
       setStatus('connecting', 'connecting…');
-      await link.connect();
+      await driver.connect();
     } catch (e) {
-      setStatus('error', 'error');
       logLine('error', e.message);
     }
   });
 
-  // Navbar Disconnect button: disconnect only. Hidden pre-connect via
-  // `.connected-only`, so no connected-state guard needed.
-  //
-  // We flip the UI to the disconnected state synchronously here rather than
-  // waiting for `_readLoop`'s `finally → onDisconnected` to fire. The read
-  // loop may take a moment to unwind (the `reader.read()` promise has to
-  // settle after `cancel()`), and without this nudge the status badge stays
-  // green long enough for the `.connected-only` panels (view pills, gear,
-  // Disconnect itself) to look stuck. If onDisconnected fires later it just
-  // re-applies the same state — idempotent.
+  // Navbar Disconnect button. We flip the UI synchronously instead of
+  // waiting for the 'disconnected' event: the read loop can take a
+  // moment to unwind after cancel(), and without this nudge the
+  // status badge stays green long enough for the `.connected-only`
+  // panels (view pills, gear, Disconnect itself) to look stuck. The
+  // later 'disconnected' event just re-applies the same state —
+  // idempotent.
   if (ui.btnDisconnect) {
     ui.btnDisconnect.addEventListener('click', async () => {
       setStatus('disconnected', 'disconnected');
-      try { await link.disconnect(); }
+      try { await driver.disconnect(); }
       catch (e) { logLine('error', e.message); }
     });
   }
@@ -1054,9 +493,9 @@ function main() {
   ui.btnReadAll.addEventListener('click', readAll);
   ui.btnClearLog.addEventListener('click', () => { ui.log.innerHTML = ''; });
 
-  // Close the port when the tab is closed
+  // Close the port when the tab is closed.
   window.addEventListener('beforeunload', () => {
-    try { link.disconnect(); } catch {}
+    try { driver.disconnect(); } catch {}
   });
 }
 
@@ -1069,40 +508,27 @@ document.addEventListener('DOMContentLoaded', () => {
   initLabelDesigner();
 });
 // =====================================================================
-// Label Designer + Print Queue for P780BT (free positioning).
+// Label Designer + Print Queue (free positioning).
 // - Elements have x, y (in px from the label's top-left corner)
 // - Barcode/QR/DataMatrix: explicit w, h; drag in the body = move, at the corner = resize
 // - Text: x, y; size driven by fontSize; w/h are computed from the text
 // - bwip-js errors are shown as Bootstrap toasts instead of being "baked"
 //   into the canvas.
-// Shares `link`, `logInfo`, `logError`, `currentCartridgeWidthMm` with
+// Shares `driver`, `logInfo`, `logError`, `currentCartridgeWidthMm` with
 // the Web Serial section above — same script, single module scope.
 // =====================================================================
 
 // ---------- Constants ----------
 
-// Designer renders directly at the printer's native effective DPI (180 for
-// P780BT, confirmed from PrinterTypeChecker.java in the reference app).
-// Rendering WYSIWYG at printer resolution eliminates the scale mismatch and
-// lets the raster pipeline stay a pure 1:1 pass-through.
-const DPI = 180;
-const PX_PER_MM = DPI / 25.4;       // ≈7.0866
+// Designer renders directly at the printer's native effective DPI so the
+// raster pipeline stays a pure 1:1 pass-through (no scale mismatch). DPI
+// comes from the active driver, so swapping to a 203-dpi printer later
+// just requires changing the driver id in `./printer/index.js`.
+const DPI = driver.dpi;
+const PX_PER_MM = driver.pxPerMm;
 
 const HANDLE_SIZE = 10;             // px — resize handle box
 
-// Vertical shift of the raster along the tape-WIDTH axis, in pixels.
-// Positive = shift content DOWN on the tape (toward the bottom edge, away
-// from the print head's column-0 edge). Negative = shift UP. At 180 dpi,
-// 1 px ≈ 0.14 mm. Current: 2 px ≈ 0.28 mm down.
-const PRINT_VERTICAL_SHIFT_PX = 2;
-
-// Optional fixed shift of the whole raster along the feed axis, in pixels
-// (positive = shift content toward the CUT edge, i.e. to the LEFT in the
-// designer; negative = shift toward the LEADING edge / designer RIGHT).
-// Leave at 0 unless you consistently observe the printed content offset
-// in one direction and want to nudge it back. At 180 dpi, 1 px ≈ 0.14 mm.
-// Current: 4 px ≈ 0.5 mm leftward nudge to center content on the tape.
-const PRINT_FEED_SHIFT_PX = 4;
 const SELECT_OUTLINE = '#0ea5e9';
 const ERROR_OUTLINE  = '#ef4444';
 const GUIDE_COLOR    = '#e91e63';   // magenta-like color for alignment guides
@@ -2572,7 +1998,7 @@ function updateQueueUI() {
   // even for non-counter jobs).
   const prints = queue.reduce((s, q) => s + Math.max(1, q.copies | 0), 0);
   dui.queueCount.textContent = `${queue.length} item${queue.length === 1 ? '' : 's'} · ${prints} print${prints === 1 ? '' : 's'}`;
-  const connected = link?.isOpen;
+  const connected = driver.isConnected;
   dui.btnPrintQueue.disabled = !(queue.length && connected);
   dui.btnClearQueue.disabled = queue.length === 0;
 }
@@ -2644,183 +2070,14 @@ function addToQueue() {
   );
 }
 
-// ---------- Raster / dither ----------
-
-function canvasToMonoBytes(canvas, method = 'threshold', threshold = 128) {
-  const w = canvas.width, h = canvas.height;
-  const ctx = canvas.getContext('2d');
-  const img = ctx.getImageData(0, 0, w, h);
-  const src = img.data;
-
-  const lum = new Float32Array(w * h);
-  for (let i = 0, p = 0; p < src.length; p += 4, i++) {
-    const r = src[p], g = src[p + 1], b = src[p + 2], a = src[p + 3];
-    if (a < 128) { lum[i] = 255; continue; }
-    lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
-  }
-
-  const out = new Uint8Array(w * h);
-  if (method === 'floyd') {
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        const old = lum[i];
-        const nw = old < threshold ? 0 : 255;
-        out[i] = nw === 0 ? 1 : 0;
-        const err = old - nw;
-        if (x + 1 < w) lum[i + 1] += err * 7 / 16;
-        if (y + 1 < h) {
-          if (x > 0)     lum[(y + 1) * w + x - 1] += err * 3 / 16;
-                         lum[(y + 1) * w + x]     += err * 5 / 16;
-          if (x + 1 < w) lum[(y + 1) * w + x + 1] += err * 1 / 16;
-        }
-      }
-    }
-  } else if (method === 'atkinson') {
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        const old = lum[i];
-        const nw = old < threshold ? 0 : 255;
-        out[i] = nw === 0 ? 1 : 0;
-        const err = (old - nw) / 8;
-        const add = (xx, yy) => { if (xx >= 0 && xx < w && yy >= 0 && yy < h) lum[yy * w + xx] += err; };
-        add(x + 1, y); add(x + 2, y);
-        add(x - 1, y + 1); add(x, y + 1); add(x + 1, y + 1);
-        add(x, y + 2);
-      }
-    }
-  } else {
-    for (let i = 0; i < lum.length; i++) out[i] = lum[i] < threshold ? 1 : 0;
-  }
-  return { mono: out, w, h };
-}
-
-/**
- * Pack a 1bpp raster for P780BT. The printer expects the data oriented so that
- * each RASTER ROW is one scan line across the print head, and successive rows
- * advance the tape one pixel along the feed direction. Our designer canvas
- * has width = feed direction and height = tape-width direction, so we rotate
- * 90° before packing.
- *
- * Mapping (canvas → raster):
- *   - raster_row (ny)  advances along tape feed (0 = first printed = tape
- *                      leading edge)
- *   - raster_col (nx)  is one pixel across the print head (0 = one tape edge)
- *
- * We send canvas LEFT as the FIRST printed row, so when the user reads the
- * tape with the just-cut end on their LEFT and the first-out (leading) end
- * on their RIGHT, the content orientation matches the designer. Reversing
- * this direction (canvas right first) makes the post-print hardware feed
- * blank appear between the content and the leading edge instead of the
- * cutter edge, which shows up as empty space on the "right" side of the
- * printed label when the user holds the tape that way.
- *
- * Vertical shift compensation: PRINT_VERTICAL_SHIFT_PX shifts the rendered
- * content along the tape-width axis. Positive shifts content DOWN on the
- * tape (away from the nx=0 print-head edge); we achieve that by sampling
- * canvas y that's SMALLER than the current nx, so the first few tape
- * columns end up blank and the content appears nudged down.
- *
- * Header layout (4 bytes, LE each):
- *   [0..1] widthBytes = ceil(new_w / 8) = ceil(h / 8)
- *   [2..3] height     = new_h = w
- */
-function monoToRaster(mono, w, h) {
-  const newW = h;
-  const newH = w;
-  const widthBytes = Math.ceil(newW / 8);
-  const out = new Uint8Array(4 + widthBytes * newH);
-  out[0] = widthBytes & 0xFF;
-  out[1] = (widthBytes >> 8) & 0xFF;
-  out[2] = newH & 0xFF;
-  out[3] = (newH >> 8) & 0xFF;
-
-  let idx = 4;
-  // Rotated pixel (nx, ny) ← original (ox, oy)
-  //   ox = (w - 1) - ny + PRINT_FEED_SHIFT_PX
-  //     Canvas right edge → raster row 0 (printed first). Positive
-  //     PRINT_FEED_SHIFT_PX nudges the whole image toward the CUT edge
-  //     (designer LEFT) so small systemic offsets can be corrected.
-  //   oy = nx - PRINT_VERTICAL_SHIFT_PX
-  //     Positive PRINT_VERTICAL_SHIFT_PX shifts content DOWN on the tape
-  //     (the first few tape columns at nx=0..SHIFT-1 read from oy < 0,
-  //     which is out of bounds → blank).
-  for (let ny = 0; ny < newH; ny++) {
-    const ox = (w - 1) - ny + PRINT_FEED_SHIFT_PX;
-    for (let bi = 0; bi < widthBytes; bi++) {
-      let byte = 0;
-      for (let bit = 0; bit < 8; bit++) {
-        const nx = bi * 8 + bit;
-        if (nx >= newW) continue;
-        const oy = nx - PRINT_VERTICAL_SHIFT_PX;
-        if (ox >= 0 && ox < w && oy >= 0 && oy < h && mono[oy * w + ox]) {
-          byte |= (1 << (7 - bit));   // MSB = leftmost pixel in rotated space
-        }
-      }
-      out[idx++] = byte;
-    }
-  }
-  return out;
-}
-
-function canvasToRaster(canvas, method) {
-  const { mono, w, h } = canvasToMonoBytes(canvas, method);
-  return monoToRaster(mono, w, h);
-}
-
-/** Pass-through — designer already renders at the printer's native DPI
- *  (180), so the rasterizer gets the bitmap unchanged. */
-function canvasForPrint(src) {
-  return src;
-}
 
 // ---------- Print ----------
-
-// Wait for a specific response tag to arrive on the serial stream.
-// Resolves with the payload bytes, or rejects after `timeoutMs`.
-function waitForTag(expectedTag, timeoutMs = 2500) {
-  return new Promise((resolve, reject) => {
-    // `link` comes from the outer module scope via closure. (Earlier
-    // code had `const link = link;` left over from a window.serialLink
-    // → link rename; that shadowed the outer binding and tripped the
-    // Temporal Dead Zone, so waitForTag always rejected instantly and
-    // the real frame arrived outside this promise.)
-    if (!link || !link.isOpen) { reject(new Error('not connected')); return; }
-    const originalOnFrame = link.parser.onFrame;
-    const timer = setTimeout(() => {
-      link.parser.onFrame = originalOnFrame;
-      reject(new Error(`timeout waiting for tag 0x${expectedTag.toString(16)}`));
-    }, timeoutMs);
-    link.parser.onFrame = (tag, payload) => {
-      // Always forward the frame to the UI decoder too
-      try { originalOnFrame(tag, payload); } catch {}
-      if (tag === expectedTag) {
-        clearTimeout(timer);
-        link.parser.onFrame = originalOnFrame;
-        resolve(payload);
-      }
-    };
-  });
-}
-
-// Query paper state (cmd 0x11) and return the raw payload byte, or null on timeout.
-async function queryPaperState() {
-  try {
-    const payloadPromise = waitForTag(0x06, 2500);
-    await link.send([0x1F, 0x11, 0x11]);
-    const payload = await payloadPromise;
-    return payload[0] ?? null;
-  } catch {
-    return null;
-  }
-}
 
 /** Click handler for the main Print CTA. Pops a confirmation modal with
  *  the total number of physical labels about to be printed, and only
  *  kicks off `printQueue()` if the user accepts. */
 function confirmAndPrintQueue() {
-  if (!link?.isOpen) {
+  if (!driver.isConnected) {
     showToast('Printer is not connected', 'error');
     return;
   }
@@ -2857,8 +2114,23 @@ function confirmAndPrintQueue() {
   modal.show();
 }
 
+/**
+ * Drive the print job through the driver API:
+ *   1. Pre-flight: ask the driver for paper state, bail early if empty
+ *      or if the link went silent.
+ *   2. Rasterize every queued label once (driver.rasterize is a pure
+ *      function) and expand by copies count so we know the total label
+ *      count up-front for the progress bar.
+ *   3. Bracket the wire traffic with driver.beginJob / driver.endJob
+ *      (INIT_PRINTER + optional PAPER_TYPE / PRINT_PAGER).
+ *   4. Stream each raster via driver.sendRaster; it handles chunking,
+ *      PRINT_PAUSE between labels, and per-chunk onProgress callbacks.
+ *
+ * All protocol bytes live inside the driver — this function is pure
+ * orchestration + UI (progress UI, toasts, queue cleanup).
+ */
 async function printQueue() {
-  if (!link?.isOpen) {
+  if (!driver.isConnected) {
     showToast('Printer is not connected', 'error');
     return;
   }
@@ -2867,10 +2139,10 @@ async function printQueue() {
 
   logInfo(`Print queue: ${queue.length} label(s) → ${totalPrints} total prints, continuous=${continuous}`);
 
-  // Pre-flight paper check. Firmware does not send async notifications, so
-  // we must actively query PAPER_STATE before sending any raster.
+  // Pre-flight paper check. Firmware does not send async notifications,
+  // so we must actively query PAPER_STATE before sending any raster.
   logInfo('Pre-flight: querying paper state…');
-  const paperByte = await queryPaperState();
+  const paperByte = await driver.queryPaperState();
   if (paperByte === null) {
     logError('No response to PAPER_STATE — printer may be silent or RX not working.');
     showToast('No response from printer on PAPER_STATE. Check the connection.', 'error');
@@ -2878,8 +2150,7 @@ async function printQueue() {
   }
   if (paperByte === 0x88) {
     logError('Paper state = NO PAPER (0x88). Aborting print.');
-    // P1.20 — offer an inline Retry button so the user doesn't have to
-    // re-hunt for the Print CTA after loading paper.
+    // Inline Retry so the user doesn't have to re-hunt for the Print CTA.
     showToast('Printer reports no paper. Load a roll, close the cover, then Retry.', 'error', {
       action: { label: 'Retry', onClick: () => printQueue() },
     });
@@ -2888,9 +2159,8 @@ async function printQueue() {
   logInfo(`  Paper state OK (0x${paperByte.toString(16).padStart(2, '0')})`);
 
   dui.btnPrintQueue.disabled = true;
-  // P0.5 — progress UI under the Print CTA. We know `rasters.length` after
-  // the render loop below; initialise optimistically and fill in the total
-  // once it's known.
+  // Progress UI under the Print CTA. Seeded after rasterization so we
+  // have the final count (labels × copies).
   const pgWrap = document.getElementById('printProgress');
   const pgBar  = document.getElementById('printProgressBar');
   const pgCur  = document.getElementById('printProgressCurrent');
@@ -2907,79 +2177,42 @@ async function printQueue() {
     pgWrap.classList.add('d-none');
     if (pgBar) pgBar.style.width = '0%';
   };
+
+  let jobOpened = false;
   try {
-    // Prepare every raster first (label × copies) so we can stream them
-    // as a single print job (one INIT, one PAGER, PAUSE between rasters).
+    // Rasterize every queued label once, then expand by copies count
+    // so the progress bar knows the final total up front.
     const rasters = [];
     for (let li = 0; li < queue.length; li++) {
       const lbl = queue[li];
       const copies = Math.max(1, Math.min(99, lbl.copies | 0));
       const tmp = document.createElement('canvas');
       renderClean(tmp, lbl);
-      // Prepare the canvas for print: shorten along the feed axis to cancel
-      // out the printer's automatic post-print feed, and shrink the content
-      // uniformly for an inner margin. See canvasForPrint().
-      const forPrint = canvasForPrint(tmp);
-      const raster = canvasToRaster(forPrint, lbl.dither);
-      logInfo(`  Label #${li + 1}: ${tmp.width}×${tmp.height}px → print ${forPrint.width}×${forPrint.height}px × ${copies} copies → ${raster.length} raster bytes`);
+      const raster = driver.rasterize(tmp, { dither: lbl.dither });
+      logInfo(`  Label #${li + 1}: ${tmp.width}×${tmp.height}px × ${copies} copies → ${raster.length} raster bytes`);
       for (let c = 0; c < copies; c++) rasters.push(raster);
     }
     if (rasters.length === 0) {
       showToast('Queue is empty', 'info');
       return;
     }
-
-    // Chunked streaming to avoid overrunning the printer's internal buffer:
-    //   1. Send PAPER_TYPE (if requested) + INIT_PRINTER as a small head chunk.
-    //   2. For each raster: send PRINT_IMAGE prefix + raster in ~1 KB chunks,
-    //      with a short pause after each raster so the print head can process.
-    //   3. Between rasters (not after the last) send PRINT_PAUSE.
-    //   4. Finish with PRINT_PAGER.
-    //
-    // `silent=true` on each send suppresses per-chunk TX log spam; we log once
-    // per label so the console stays readable.
-    const RASTER_CHUNK = 1024;   // bytes per serial write
-    const INTER_CHUNK_MS = 5;    // tiny breathing room between chunks
-    const INTER_LABEL_MS = 180;  // let the head finish a label before the next
-
-    // `link` is the module-scope SerialLink instance (closure).
-
-    // Head: (optional PAPER_TYPE) + INIT_PRINTER
-    const head = [];
-    if (continuous) head.push(0x1F, 0x11, 0x0B, 0x0B);  // PAPER_TYPE = Continuous
-    head.push(0x1B, 0x40);                              // INIT_PRINTER
-    await link.send(head);                              // logged
-    await sleep(40);
-
-    // P0.5 — seed progress UI once the total is known.
     showProgress(0, rasters.length);
+
+    await driver.beginJob({ continuous });
+    jobOpened = true;
 
     for (let i = 0; i < rasters.length; i++) {
       logInfo(`  → raster ${i + 1}/${rasters.length} (${rasters[i].length} bytes)`);
-
-      // PRINT_IMAGE prefix + raster streamed in RASTER_CHUNK-sized pieces.
-      const r = rasters[i];
-      const prefixed = new Uint8Array(4 + r.length);
-      prefixed[0] = 0x1D; prefixed[1] = 0x76; prefixed[2] = 0x30; prefixed[3] = 0x00;
-      prefixed.set(r, 4);
-
-      for (let off = 0; off < prefixed.length; off += RASTER_CHUNK) {
-        const end = Math.min(off + RASTER_CHUNK, prefixed.length);
-        await link.send(prefixed.subarray(off, end), /* silent */ true);
-        if (end < prefixed.length) await sleep(INTER_CHUNK_MS);
-      }
+      await driver.sendRaster(rasters[i]);
       showProgress(i + 1, rasters.length);
-
-      if (i < rasters.length - 1) {
-        await link.send([0x1F, 0x11, 0x3C]);             // PRINT_PAUSE (logged)
-        await sleep(INTER_LABEL_MS);
-      }
     }
 
-    await link.send([0x1B, 0x64, 0x00]);                 // PRINT_PAGER (logged)
-    // Everything that was in the queue is now on the printer. Clear it so
-    // the user starts fresh next time — a print job has no re-queue value,
-    // and leaving stale items around invites accidental reprints.
+    await driver.endJob();
+    jobOpened = false;
+
+    // Everything that was in the queue is now on the printer. Clear it
+    // so the user starts fresh next time — a print job has no re-queue
+    // value, and leaving stale items around invites accidental reprints.
     const printed = queue.length;
     queue.length = 0;
     buildQueueList();
@@ -2987,13 +2220,15 @@ async function printQueue() {
   } catch (e) {
     logError('Print failed: ' + e.message);
     showToast('Print failed: ' + e.message, 'error');
+    // Best-effort end-of-job so the printer isn't left in mid-session.
+    if (jobOpened) {
+      try { await driver.endJob(); } catch {}
+    }
   } finally {
     hideProgress();
     updateQueueUI();
   }
 }
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- Templates (localStorage) ----------
 
@@ -3604,7 +2839,8 @@ function showToast(msg, kind = 'info', opts = {}) {
     });
   }
 }
-// Expose for other scripts (e.g. app.js verifyPrinterIdentity)
+// Expose on `window` so driver event handlers (e.g. the identity-failed
+// listener) can surface a toast when a modal isn't available.
 window.showToast = showToast;
 
 // ---------- UI refs / init ----------
