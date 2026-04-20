@@ -1577,12 +1577,11 @@ function renderInspector() {
   const el = state.elements.find(e => e.id === state.selectedId);
 
   if (!el) {
+    // Nothing to edit — hide the panel entirely so the list isn't
+    // followed by a placeholder empty card.
     delete ins.dataset.elementId;
-    ins.innerHTML = `
-      <div class="text-center text-body-secondary small py-4">
-        <i class="bi bi-box-arrow-in-down-left d-block mb-2" style="font-size:1.5rem;opacity:.6"></i>
-        Select an element on the left to edit its properties.
-      </div>`;
+    ins.innerHTML = '';
+    ins.classList.add('d-none');
     return;
   }
 
@@ -1590,6 +1589,7 @@ function renderInspector() {
   // enabled/disabled state inside the editor header.
   const idx = state.elements.findIndex(e => e.id === el.id);
   ins.dataset.elementId = el.id;
+  ins.classList.remove('d-none');
   ins.innerHTML = renderElementEditor(el, idx);
 
   // Action buttons (center, up/down layer, delete) — now live inside
@@ -2851,44 +2851,49 @@ function renderTemplatesGallery() {
   gallery.classList.remove('d-none');
 
   if (filtered.length === 0) {
-    gallery.innerHTML = `<div class="col-12 text-center py-4 text-body-secondary small">No templates match "<b>${escHtml(templateSearchTerm)}</b>".</div>`;
+    // Spans the whole grid row (auto-fill grid wouldn't give this one
+    // "no matches" block full width otherwise).
+    gallery.innerHTML = `<div class="text-center py-4 text-body-secondary small" style="grid-column: 1 / -1;">No templates match "<b>${escHtml(templateSearchTerm)}</b>".</div>`;
     return;
   }
 
   for (const tpl of filtered) {
-    const col = document.createElement('div');
-    col.className = 'col-sm-6 col-lg-4 col-xl-3';
+    // The gallery is a CSS-grid (`.template-grid` → auto-fill,
+    // minmax(220px, 1fr)), so each `.template-card` is a DIRECT grid
+    // item — no Bootstrap `col-*` wrapper. A `col-*` wrapper would
+    // cap width at e.g. 25% of the 220px grid cell and collapse the
+    // card into a sliver.
+    const card = document.createElement('div');
+    card.className = 'card template-card';
     const date = new Date(tpl.updatedAt || tpl.createdAt);
     const dateStr = isNaN(date) ? '' : date.toLocaleDateString();
     const elemCount = (tpl.elements || []).length;
-    col.innerHTML = `
-      <div class="card shadow-sm h-100 template-card">
-        <div class="template-thumb-wrap">
-          ${tpl.thumbnail
-            ? `<img src="${tpl.thumbnail}" alt="" class="template-thumb">`
-            : `<div class="template-thumb-placeholder"><i class="bi bi-image text-body-secondary"></i></div>`}
-        </div>
-        <div class="card-body py-2 px-3">
-          <div class="fw-semibold text-truncate" title="${escHtml(tpl.name)}">${escHtml(tpl.name)}</div>
-          <div class="small text-body-secondary">${tpl.widthMm}×${tpl.heightMm} mm · ${elemCount} element${elemCount === 1 ? '' : 's'}${dateStr ? ' · ' + dateStr : ''}</div>
-        </div>
-        <div class="card-footer bg-transparent border-0 pt-0 pb-2 px-3 d-flex gap-1">
-          <button class="btn btn-primary btn-sm flex-grow-1" data-tpl-open="${tpl.id}" title="Open in designer">
-            <i class="bi bi-folder2-open me-1"></i>Open
-          </button>
-          <button class="btn btn-outline-success btn-sm" data-tpl-queue="${tpl.id}" title="Add to queue"><i class="bi bi-plus-circle"></i></button>
-          <button class="btn btn-outline-secondary btn-sm" data-tpl-dup="${tpl.id}" title="Duplicate">
-            <i class="bi bi-files"></i>
-          </button>
-          <button class="btn btn-outline-secondary btn-sm" data-tpl-rename="${tpl.id}" title="Rename">
-            <i class="bi bi-pencil"></i>
-          </button>
-          <button class="btn btn-outline-danger btn-sm" data-tpl-del="${tpl.id}" title="Delete">
-            <i class="bi bi-trash"></i>
-          </button>
-        </div>
+    card.innerHTML = `
+      <div class="template-thumb-wrap">
+        ${tpl.thumbnail
+          ? `<img src="${tpl.thumbnail}" alt="" class="template-thumb">`
+          : `<div class="template-thumb-placeholder"><i class="bi bi-image text-body-secondary"></i></div>`}
+      </div>
+      <div class="card-body py-2 px-3">
+        <div class="fw-semibold text-truncate" title="${escHtml(tpl.name)}">${escHtml(tpl.name)}</div>
+        <div class="small text-body-secondary">${tpl.widthMm}×${tpl.heightMm} mm · ${elemCount} element${elemCount === 1 ? '' : 's'}${dateStr ? ' · ' + dateStr : ''}</div>
+      </div>
+      <div class="card-footer bg-transparent border-0 pt-0 pb-2 px-3 d-flex gap-1">
+        <button class="btn btn-primary btn-sm flex-grow-1" data-tpl-open="${tpl.id}" title="Open in designer">
+          <i class="bi bi-folder2-open me-1"></i>Open
+        </button>
+        <button class="btn btn-outline-success btn-sm" data-tpl-queue="${tpl.id}" title="Add to queue"><i class="bi bi-plus-circle"></i></button>
+        <button class="btn btn-outline-secondary btn-sm" data-tpl-dup="${tpl.id}" title="Duplicate">
+          <i class="bi bi-files"></i>
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" data-tpl-rename="${tpl.id}" title="Rename">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <button class="btn btn-outline-danger btn-sm" data-tpl-del="${tpl.id}" title="Delete">
+          <i class="bi bi-trash"></i>
+        </button>
       </div>`;
-    gallery.appendChild(col);
+    gallery.appendChild(card);
   }
 
   // Bind actions
