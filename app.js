@@ -1215,18 +1215,17 @@ function renderPreview() {
   // Snap guides
   drawGuides(ctx, widthPx, heightPx, state.activeGuides);
 
-  // P0.4 — designerSizeHint now has two placeholder spans (`l` / `w`) so we
-  // can show "L mm long x W mm wide" instead of the ambiguous numeric pair.
-  if (dui.designerSizeHint) {
-    const lEl = dui.designerSizeHint.querySelector('[data-role="l"]');
-    const wEl = dui.designerSizeHint.querySelector('[data-role="w"]');
-    if (lEl) lEl.textContent = state.widthMm;
-    if (wEl) wEl.textContent = state.heightMm;
-    // Legacy consumers that expect the old " — × — " format still get
-    // a sensible fallback if the span markup ever goes missing.
-    if (!lEl && !wEl) {
-      dui.designerSizeHint.textContent = `${state.widthMm} × ${state.heightMm} mm`;
-    }
+  // Sync every mm placeholder across the designer card — both the
+  // header size hint (`L mm long × W mm wide`) and the cartridge
+  // diagram labels (`Width N mm`, `Length N mm`) share `[data-role="l"]`
+  // / `[data-role="w"]` spans. A card-wide querySelectorAll updates
+  // both in one pass.
+  document.querySelectorAll('[data-role="l"]').forEach(el => { el.textContent = state.widthMm; });
+  document.querySelectorAll('[data-role="w"]').forEach(el => { el.textContent = state.heightMm; });
+  // Legacy consumers that expect the old " — × — " format still get a
+  // sensible fallback if the span markup ever goes missing.
+  if (dui.designerSizeHint && !dui.designerSizeHint.querySelector('[data-role="l"]')) {
+    dui.designerSizeHint.textContent = `${state.widthMm} × ${state.heightMm} mm`;
   }
   dui.previewPxHint.textContent = `(${widthPx} × ${heightPx} px @ ${DPI} dpi)`;
   // Keep the cartridge-mismatch alert in sync on every redraw.
