@@ -463,15 +463,32 @@ function main() {
   // and has its own handler below). On success the driver's 'connected'
   // event listener already flipped the UI and kicked off readAll.
   // On failure the 'identity-failed' listener may have shown the
-  // wrong-endpoint modal; the 'disconnected' event will reset the
-  // badge — our only extra job here is to log the message.
+  // wrong-endpoint modal; if the driver emitted 'disconnected' that
+  // listener resets the badge too. But `requestPort()` can reject
+  // BEFORE any driver event fires — most commonly when the user
+  // dismisses the browser's BT picker without choosing anything
+  // (Chrome throws `NotFoundError: No port selected by the user`).
+  // If we don't flip the status back to disconnected here, the badge
+  // stays on "connecting" and the hero button stays `.disabled`
+  // forever — the user ends up stuck on the pre-connect screen with
+  // no clickable control.
   ui.btnConnect.addEventListener('click', async () => {
     if (driver.isConnected) return;   // defensive; hero is hidden while connected
     try {
       setStatus('connecting', 'connecting…');
       await driver.connect();
     } catch (e) {
-      logLine('error', e.message);
+      // Reset the UI to disconnected so the hero Connect button
+      // becomes clickable again.
+      setStatus('disconnected', 'disconnected');
+      // Silent path for the user-cancelled picker — no log spam,
+      // no error badge. Everything else (device unreachable,
+      // identity check failed, etc.) still gets logged.
+      if (e && e.name === 'NotFoundError') {
+        logLine('info', 'Connect cancelled (no port selected).');
+      } else {
+        logLine('error', e.message || String(e));
+      }
     }
   });
 
