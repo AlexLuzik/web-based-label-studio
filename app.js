@@ -1658,13 +1658,15 @@ function renderInspector() {
   // enabled/disabled state inside the editor header.
   const idx = state.elements.findIndex(e => e.id === el.id);
   ins.dataset.elementId = el.id;
-  // Inject a tiny close button at the top-right of the popover so
-  // the user has a visible way to dismiss it (Escape + click-outside
-  // also work, wired below). Rendered ABOVE the form so it floats
-  // clear of the title row.
+  // Inject a tiny close button that sits on the popover's outer
+  // frame, plus a scrollable `.inspector-body` wrapper holding the
+  // actual form. Keeping the scroll on an inner wrapper — not on
+  // `.inspector` itself — is intentional: the arrow pseudo-elements
+  // on the outer popover extend past its border, and any
+  // `overflow: auto|hidden` on the outer frame would clip them.
   ins.innerHTML =
     `<button type="button" class="inspector-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>` +
-    renderElementEditor(el, idx);
+    `<div class="inspector-body">${renderElementEditor(el, idx)}</div>`;
   // Close button → clear selection (same as clicking empty canvas).
   const closeBtn = ins.querySelector('.inspector-close');
   if (closeBtn) closeBtn.addEventListener('click', () => {
