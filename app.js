@@ -1387,12 +1387,33 @@ function onCanvasMouseDown(evt) {
   };
 
   dui.canvas.style.cursor = dragMode === 'resize' ? 'nwse-resize' : 'grabbing';
-  // Safe to rebuild immediately: the inspector lives BELOW the canvas
-  // in the DOM (see index.html), AND the drag math above no longer
-  // depends on the canvas rect. Any reflow from renderInspector is
-  // harmless to the in-flight drag.
+  // Popover would either lag behind the moving element or jitter
+  // trying to follow it — both look bad. Hide it for the duration
+  // of the drag and bring it back positioned at the final spot on
+  // mouseup. The drag math is viewport-anchored (see dragOffset
+  // above) so no reflow from showing/hiding the popover can corrupt
+  // it, but this just reads cleaner to the user.
+  if (dui.inspector) {
+    dui.inspector.classList.remove('is-showing');
+    dui.inspector.classList.add('d-none');
+  }
   renderPreview();
-  buildElementsList();
+  // Update the left list's selection highlight without rebuilding —
+  // the popover will be re-rendered on mouseup.
+  syncListRowSelection();
+}
+
+/** Update just the `.element-selected` class on the left-hand list so
+ *  it mirrors state.selectedId, without rebuilding rows (which would
+ *  detach event listeners mid-drag). */
+function syncListRowSelection() {
+  const list = dui.elementsList;
+  if (!list) return;
+  list.querySelectorAll('.element-row.element-selected').forEach(r => r.classList.remove('element-selected'));
+  if (state.selectedId) {
+    const row = list.querySelector(`.element-row[data-id="${state.selectedId}"]`);
+    if (row) row.classList.add('element-selected');
+  }
 }
 
 function onCanvasMouseMove(evt) {
@@ -1447,9 +1468,10 @@ function onCanvasMouseUp() {
   state.activeGuides = [];
   dui.canvas.style.cursor = 'default';
   renderPreview();
-  // After a resize, the row's size/fontSize badge on the left list is
-  // now stale — refresh the list + inspector so the compact row's
-  // "W×H" / "Npt" label matches reality.
+  // After a drag/resize the compact row's badge (W×H / fontSize) is
+  // stale and the popover was hidden — rebuild both in one go. The
+  // rebuild re-runs `renderInspector`, which repositions the popover
+  // to the element's new location and fades it back in.
   if (wasDragging) buildElementsList();
 }
 
@@ -1627,11 +1649,8 @@ function renderInspector() {
   const el = state.elements.find(e => e.id === state.selectedId);
 
   if (!el) {
-    // Nothing to edit — hide the panel entirely so the list isn't
-    // followed by a placeholder empty card.
-    delete ins.dataset.elementId;
-    ins.innerHTML = '';
-    ins.classList.add('d-none');
+    // Nothing selected — tear the popover down.
+    hideInspector();
     return;
   }
 
@@ -1639,8 +1658,28 @@ function renderInspector() {
   // enabled/disabled state inside the editor header.
   const idx = state.elements.findIndex(e => e.id === el.id);
   ins.dataset.elementId = el.id;
+  // Inject a tiny close button at the top-right of the popover so
+  // the user has a visible way to dismiss it (Escape + click-outside
+  // also work, wired below). Rendered ABOVE the form so it floats
+  // clear of the title row.
+  ins.innerHTML =
+    `<button type="button" class="inspector-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>` +
+    renderElementEditor(el, idx);
+  // Close button → clear selection (same as clicking empty canvas).
+  const closeBtn = ins.querySelector('.inspector-close');
+  if (closeBtn) closeBtn.addEventListener('click', () => {
+    state.selectedId = null;
+    renderPreview();
+    buildElementsList();
+  });
+  // Reveal + position. The 2-step `.d-none` → `.is-showing` lets the
+  // CSS transition run (opacity / transform animate in).
   ins.classList.remove('d-none');
-  ins.innerHTML = renderElementEditor(el, idx);
+  positionInspector();
+  // Kick the transition forward on the next frame so the browser
+  // commits the "display: block" first, otherwise the scale-in is
+  // skipped.
+  requestAnimationFrame(() => ins.classList.add('is-showing'));
 
   // Action buttons (center, up/down layer, delete) — now live inside
   // the inspector header (same markup `renderElementEditor` produces).
@@ -1706,6 +1745,73 @@ function renderInspector() {
     inp.addEventListener('input',  handler);
     inp.addEventListener('change', handler);
   });
+}
+
+/**
+ * Tear the floating inspector down — clears classes, inline position
+ * and the stored element id. Used when nothing is selected, when
+ * clicking outside, or when the user presses Esc / the close button.
+ */
+function hideInspector() {
+  const ins = dui.inspector;
+  if (!ins) return;
+  delete ins.dataset.elementId;
+  ins.classList.remove('is-showing');
+  ins.classList.add('d-none');
+  ins.innerHTML = '';
+  // Reset inline position so the next show starts clean — fresh
+  // measurements, no leftover top/left from the previous element.
+  ins.style.top = '';
+  ins.style.left = '';
+}
+
+/**
+ * Place the floating inspector above the currently-selected element.
+ *
+ * Default placement: centred horizontally on the element, `MARGIN` px
+ * above its top edge. If there isn't enough room above (element near
+ * the top of the viewport / popover too tall), flip to below. Finally
+ * clamp the popover fully inside the viewport with a small margin —
+ * a short element hugging the screen edge still produces a readable
+ * popover, not one cut in half by the window bounds.
+ */
+function positionInspector() {
+  const ins = dui.inspector;
+  if (!ins || ins.classList.contains('d-none')) return;
+  const el = state.elements.find(e => e.id === state.selectedId);
+  if (!el) return;
+  const canvas = dui.canvas;
+  if (!canvas) return;
+
+  // Element bbox in canvas-buffer pixels → viewport pixels, scaling
+  // for any CSS compression (narrow viewports where `max-width: 100%`
+  // shrinks the canvas below its drawing-buffer resolution).
+  const canvasRect = canvas.getBoundingClientRect();
+  const scaleX = canvasRect.width  ? canvasRect.width  / canvas.width  : 1;
+  const scaleY = canvasRect.height ? canvasRect.height / canvas.height : 1;
+  const ctx = canvas.getContext('2d');
+  const bbox = getElementBBox(el, ctx);
+  const elLeft   = canvasRect.left + bbox.x * scaleX;
+  const elTop    = canvasRect.top  + bbox.y * scaleY;
+  const elWidth  = bbox.w * scaleX;
+  const elHeight = bbox.h * scaleY;
+
+  const popRect = ins.getBoundingClientRect();
+  const MARGIN = 8;
+  const EDGE   = 12;
+
+  // Vertical: above by default, below if above clips past the top edge.
+  let top = elTop - popRect.height - MARGIN;
+  if (top < EDGE) top = elTop + elHeight + MARGIN;
+  // Final clamp — if neither above nor below fits, pin to the viewport.
+  top = Math.max(EDGE, Math.min(window.innerHeight - popRect.height - EDGE, top));
+
+  // Horizontal: centre on the element, then clamp inside the viewport.
+  let left = elLeft + elWidth / 2 - popRect.width / 2;
+  left = Math.max(EDGE, Math.min(window.innerWidth - popRect.width - EDGE, left));
+
+  ins.style.top  = `${Math.round(top)}px`;
+  ins.style.left = `${Math.round(left)}px`;
 }
 
 /* =====================================================================
@@ -3401,6 +3507,50 @@ function initLabelDesigner() {
   dui.canvas.addEventListener('mousedown', onCanvasMouseDown);
   window.addEventListener('mousemove', onCanvasMouseMove);
   window.addEventListener('mouseup', onCanvasMouseUp);
+
+  // --- Floating inspector dismissal + reposition ---
+  //
+  // Scroll / resize keep the popover glued to its element even as the
+  // user scrolls the page or resizes the window. `positionInspector`
+  // bails immediately when the popover is hidden, so this is cheap.
+  window.addEventListener('scroll', positionInspector, true);  // capture = catches inner scrollers too
+  window.addEventListener('resize', positionInspector);
+
+  // Click-outside: if the user clicks anywhere that isn't the popover
+  // itself AND isn't the canvas / elements list (those own their own
+  // selection handling), deselect. `mousedown` is preferred over
+  // `click` because it fires before the browser starts a drag/
+  // text-select interaction — the popover vanishes crisply.
+  document.addEventListener('mousedown', (e) => {
+    const ins = dui.inspector;
+    if (!ins || ins.classList.contains('d-none')) return;
+    // Clicks inside the popover keep it open (form fields, buttons).
+    if (e.target.closest('#inspector')) return;
+    // Clicks on the canvas / elements list drive their own selection
+    // — let those handlers decide what to do.
+    if (e.target.closest('#labelCanvas, #elementsList')) return;
+    // Clicks inside Bootstrap dialogs / overlays shouldn't deselect
+    // either (the user is probably opening Advanced or a modal).
+    if (e.target.closest('.modal, .offcanvas, .dropdown-menu, .popover, .toast')) return;
+    state.selectedId = null;
+    renderPreview();
+    buildElementsList();
+  }, true);
+
+  // Escape deselects when the popover is open. Guarded so we don't
+  // swallow Escape from a modal / offcanvas that's also listening.
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const ins = dui.inspector;
+    if (!ins || ins.classList.contains('d-none')) return;
+    // Don't interfere if a Bootstrap dialog is on top — it has its
+    // own Escape handler and the user's intent is to close THAT,
+    // not our popover.
+    if (document.querySelector('.modal.show, .offcanvas.show')) return;
+    state.selectedId = null;
+    renderPreview();
+    buildElementsList();
+  });
 
   // Buttons
   qs('#btnAddToQueue').addEventListener('click', () => addToQueue());

@@ -766,11 +766,58 @@ body > main > footer {
 .element-index { font-size: .65rem; opacity: .7; }
 .element-body .form-label { font-size: .7rem; opacity: .7; margin-bottom: 2px; }
 
+/* Floating element-inspector popover.
+ *
+ * Positioned above (or below, when squeezed) the selected canvas
+ * element by JS (`positionInspector`). Lives at body level at
+ * `position: fixed` so it sits on top of everything designer-card-
+ * related without reflowing siblings. Scrollable when the form
+ * overflows (e.g. Counter's ten fields on a narrow viewport). */
 .inspector {
-  background: var(--bs-secondary-bg);
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1050;               /* above navbar + offcanvas scrim, below modals */
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 540px);
+  overflow: auto;
+  background: var(--bs-tertiary-bg);
   border: 1px solid var(--bs-border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 0.85rem;
+  box-shadow:
+    0 24px 48px -12px rgba(0, 0, 0, 0.6),
+    0 0 0 3px rgba(99, 102, 241, 0.12);
+  /* Fade + tiny scale-in on appear. `.is-showing` is the gatekeeper —
+   * transition runs only when the popover is actually visible
+   * (`d-none` removed). */
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+.inspector.is-showing {
+  opacity: 1;
+  transform: scale(1);
+}
+/* Tiny close button in the popover's top-right. */
+.inspector .inspector-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: 0;
+  color: var(--bs-tertiary-color);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.inspector .inspector-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--bs-body-color);
 }
 .inspector .inspector-row {
   display: grid;

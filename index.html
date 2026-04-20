@@ -354,17 +354,12 @@
               <div class="toolbar-hint">
                 drag to move &middot; handle at corner to resize &middot; <kbd>Del</kbd> to remove
               </div>
+              <!-- Inspector has moved out of this card and floats over
+                   the canvas as a body-level popover (see #inspector at
+                   the end of <body>) — keeps its height from shifting
+                   the preview and lets it escape the card's
+                   `overflow: hidden` clipping. -->
 
-              <!-- Inspector lives BELOW the preview on purpose. Putting it
-                   between the list and the canvas would push the canvas
-                   down whenever the user selects / deselects an element —
-                   and because pointer events on the canvas depend on its
-                   viewport rect, any reflow during an in-flight drag sent
-                   the picked-up element flying off-canvas. Anchoring the
-                   inspector after the canvas keeps the canvas's rect
-                   stable for the whole session; only the footer buttons
-                   shift when the inspector grows, which is harmless. -->
-              <div id="inspector" class="inspector mt-3 d-none"></div>
 
               <!-- Designer footer actions.
                    Three-way save button swap driven by app.js:
@@ -826,6 +821,14 @@
 </div>
 
 <!-- Toasts -->
+<!-- Floating element inspector. Positioned via JS (`positionInspector`)
+     to sit above (or below, when cramped) the currently-selected
+     element on the label canvas. Lives at body level so it can escape
+     the designer card's `overflow: hidden` and so growing / shrinking
+     its content doesn't reflow any sibling. Hidden by default (d-none);
+     `renderInspector` brings it in when something is selected. -->
+<div id="inspector" class="inspector d-none" role="dialog" aria-label="Element inspector"></div>
+
 <div id="toastContainer" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080"></div>
 
 <!-- Save / Rename template modal -->
