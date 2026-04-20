@@ -33,12 +33,40 @@
 //      its own Driver subclass.
 // =====================================================================
 
-import { QuinPrinterDriver } from './quin-base.js';
-import { P780BTDriver }      from './p780bt.js';
+import { QuinPrinterDriver, QUIN_CONSTANTS } from './quin-base.js';
 
 // =====================================================================
 //  P-FAMILY
 // =====================================================================
+
+/**
+ * P780BT — the author's actual printer. Tested on real hardware.
+ *
+ * Values cross-referenced with the vendor P780BTPrinter.java (DPI 180,
+ * dither 200, scale 0.8866995, pager `[0x1B, 0x64, 0x00]`) and SN
+ * prefix Q217 → `Serial.P780`. `ditherThreshold: 128` deliberately
+ * differs from the vendor's 200 — in practice 128 produces cleaner
+ * prints for our neutral sample set and changing it would be an
+ * untested behavioural shift. The +4/+2 px raster shifts are our own
+ * field-tuned calibration; every other driver starts at 0/0 and
+ * needs per-hardware dial-in.
+ */
+export class P780BTDriver extends QuinPrinterDriver {
+  get model()                { return 'P780BT'; }
+  get dpi()                  { return 180; }
+  get ditherThreshold()      { return 128; }
+  get bitmapScaleSize()      { return 0.8866995; }
+  get maxPrintWidthMm()      { return 48; }
+  get printFeedShiftPx()     { return 4; }
+  get printVerticalShiftPx() { return 2; }
+  get printPagerBytes()      { return [0x1B, 0x64, 0x00]; }
+  get vendorModels()         { return ['P780']; }
+}
+
+// Backward-compat alias — legacy code imported `P780BT_CONSTANTS` from
+// the old per-model file; now the shared constants live in quin-base
+// but we re-export under the old name so nothing breaks.
+export const P780BT_CONSTANTS = QUIN_CONSTANTS;
 
 /** P24 — compact BT printer. Vendor: `P24Printer extends P780BTPrinter`,
  *  zero overrides (NOOP subclass). Inherits every P780BT parameter. */

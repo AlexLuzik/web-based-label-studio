@@ -10,8 +10,8 @@
 //
 //  This file mirrors that architecture: `QuinPrinterDriver` owns
 //  everything shared (framing, decoding, identity check, raster
-//  packing, print pipeline). Per-model subclasses in `./p780bt.js`
-//  and `./quin-models.js` only override the parameter getters.
+//  packing, print pipeline). Per-model subclasses in `./quin-models.js`
+//  only override the parameter getters.
 //
 //  Identity check uses `sn-registry.js` — the driver accepts the port
 //  if the SN-prefix maps to one of its declared `vendorModels`,

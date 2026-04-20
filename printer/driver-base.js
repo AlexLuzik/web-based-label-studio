@@ -44,7 +44,7 @@ export class Driver extends EventTarget {
   constructor() {
     super();
     if (new.target === Driver) {
-      throw new TypeError('Driver is abstract — subclass it (see printer/p780bt.js)');
+      throw new TypeError('Driver is abstract — subclass it (see printer/quin-base.js + printer/quin-models.js)');
     }
     this.link = null;
     this._parser = null;

@@ -15,9 +15,10 @@
 import { SerialLink, ResponseParser } from './transport.js';
 import { Driver }                     from './driver-base.js';
 import { QuinPrinterDriver, QUIN_CONSTANTS } from './quin-base.js';
-import { P780BTDriver, P780BT_CONSTANTS }    from './p780bt.js';
 import {
-  // P family
+  // P family (P780BT = reference driver, the one tested on real
+  // hardware; others are derived from vendor source)
+  P780BTDriver, P780BT_CONSTANTS,
   P24Driver, P580Driver, P1000Driver, AMP310Driver, P15Driver,
   P3100DDriver, P3100DJDriver, P3200Driver, P3200DDriver, LT12Driver,
   // D family

@@ -30,7 +30,7 @@ import { createDriver } from './printer/index.js';
 //  Printer driver
 // ---------------------------------------------------------------------
 //  All protocol bytes, frame decoding, identity check, raster layout
-//  and the print-job pipeline live in `./printer/p780bt.js` behind the
+//  and the print-job pipeline live in `./printer/*.js` behind the
 //  Driver contract. Swapping in a new model is a matter of registering
 //  a different driver id in `./printer/index.js` — the UI code below
 //  never references P780BT-specific bytes.
