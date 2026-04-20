@@ -877,27 +877,10 @@ body > main > footer {
   border-color: transparent transparent transparent var(--bs-tertiary-bg);
 }
 
-/* Tiny close button in the popover's top-right. */
-.inspector .inspector-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: transparent;
-  border: 0;
-  color: var(--bs-tertiary-color);
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 1;
-}
-.inspector .inspector-close:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--bs-body-color);
-}
+/* Dismissal paths: click outside, Escape, select a different
+ * element, or the inline Delete action in the inspector header.
+ * No dedicated close-X — it was redundant and ate vertical room
+ * next to the header's action buttons. */
 .inspector .inspector-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1658,22 +1658,16 @@ function renderInspector() {
   // enabled/disabled state inside the editor header.
   const idx = state.elements.findIndex(e => e.id === el.id);
   ins.dataset.elementId = el.id;
-  // Inject a tiny close button that sits on the popover's outer
-  // frame, plus a scrollable `.inspector-body` wrapper holding the
-  // actual form. Keeping the scroll on an inner wrapper — not on
-  // `.inspector` itself — is intentional: the arrow pseudo-elements
-  // on the outer popover extend past its border, and any
-  // `overflow: auto|hidden` on the outer frame would clip them.
-  ins.innerHTML =
-    `<button type="button" class="inspector-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>` +
-    `<div class="inspector-body">${renderElementEditor(el, idx)}</div>`;
-  // Close button → clear selection (same as clicking empty canvas).
-  const closeBtn = ins.querySelector('.inspector-close');
-  if (closeBtn) closeBtn.addEventListener('click', () => {
-    state.selectedId = null;
-    renderPreview();
-    buildElementsList();
-  });
+  // Scrollable `.inspector-body` wrapper holds the form. Scroll stays
+  // on the inner wrapper — not on `.inspector` itself — because the
+  // outer popover's arrow pseudo-elements extend past its border,
+  // and any `overflow: auto|hidden` on the outer frame would clip
+  // them.
+  //
+  // No close button: the popover is dismissed by clicking outside
+  // (`mousedown` listener in initLabelDesigner), pressing Escape,
+  // clicking a different element, or the in-form Delete action.
+  ins.innerHTML = `<div class="inspector-body">${renderElementEditor(el, idx)}</div>`;
   // Reveal + position. The 2-step `.d-none` → `.is-showing` lets the
   // CSS transition run (opacity / transform animate in).
   ins.classList.remove('d-none');
