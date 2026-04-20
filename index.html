@@ -326,14 +326,6 @@
                    The list is click-to-select + drag-to-reorder only. -->
               <div id="elementsList" class="elements-list mb-3"></div>
 
-              <!-- Full-width inspector below the list. Shown only when
-                   something is selected (renderInspector toggles `d-none`).
-                   Living below the list gives inspector-row grids room to
-                   breathe across the whole card width — in a side-by-side
-                   col-5 column the long-form rows (Counter has 10+ fields)
-                   felt too cramped. -->
-              <div id="inspector" class="inspector mb-3 d-none"></div>
-
               <!-- Preview header: left-side eyebrow label, right-side toggles. -->
               <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                 <div class="eyebrow d-flex align-items-center gap-2">
@@ -362,6 +354,17 @@
               <div class="toolbar-hint">
                 drag to move &middot; handle at corner to resize &middot; <kbd>Del</kbd> to remove
               </div>
+
+              <!-- Inspector lives BELOW the preview on purpose. Putting it
+                   between the list and the canvas would push the canvas
+                   down whenever the user selects / deselects an element —
+                   and because pointer events on the canvas depend on its
+                   viewport rect, any reflow during an in-flight drag sent
+                   the picked-up element flying off-canvas. Anchoring the
+                   inspector after the canvas keeps the canvas's rect
+                   stable for the whole session; only the footer buttons
+                   shift when the inspector grows, which is harmless. -->
+              <div id="inspector" class="inspector mt-3 d-none"></div>
 
               <!-- Designer footer actions.
                    Three-way save button swap driven by app.js:

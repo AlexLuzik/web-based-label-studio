@@ -1324,16 +1324,11 @@ function onCanvasMouseDown(evt) {
   const p = canvasCoords(evt);
   const hit = hitTest(p.x, p.y);
   if (!hit) {
-    // Empty-canvas click: clear selection. No drag starts, so a full
-    // rebuild (which may toggle the inspector's visibility and thereby
-    // reflow the page) is safe — the canvas moving won't interfere
-    // with any active drag math.
     state.selectedId = null;
     renderPreview();
     buildElementsList();
     return;
   }
-
   state.selectedId = hit.el.id;
   if (hit.part === 'handle') {
     dragMode = 'resize';
@@ -1352,34 +1347,12 @@ function onCanvasMouseDown(evt) {
     dragOffset = { x: p.x - hit.el.x, y: p.y - hit.el.y };
   }
   dui.canvas.style.cursor = dragMode === 'resize' ? 'nwse-resize' : 'grabbing';
-
-  // IMPORTANT: do NOT rebuild the elements list / inspector here.
-  // `renderInspector()` toggles `.d-none` based on selection, and
-  // bringing a hidden inspector into the DOM shifts the canvas down
-  // while the user is still pressing the mouse button — the next
-  // mousemove then reads a canvas-local coordinate against the NEW
-  // canvas position, but dragOffset was captured against the OLD one,
-  // so the dragged element jumps wildly (often flies off-canvas).
-  //
-  // Instead, only update the in-place row-selection highlight (no
-  // layout change) and redraw the canvas. The inspector is rebuilt in
-  // `onCanvasMouseUp` once the drag is over and a reflow is harmless.
+  // Safe to rebuild immediately: the inspector lives BELOW the canvas
+  // in the DOM (see index.html), so toggling its visibility grows the
+  // card downward without touching the canvas's viewport rect — the
+  // drag math (`dragOffset` vs. `canvasCoords`) stays valid.
   renderPreview();
-  syncListRowSelection();
-}
-
-/** Update just the `.element-selected` class on the left-hand list so
- *  the selected row follows state.selectedId, without rebuilding the
- *  list DOM or the inspector (which would reflow and interrupt a
- *  drag in progress). */
-function syncListRowSelection() {
-  const list = dui.elementsList;
-  if (!list) return;
-  list.querySelectorAll('.element-row.element-selected').forEach(r => r.classList.remove('element-selected'));
-  if (state.selectedId) {
-    const row = list.querySelector(`.element-row[data-id="${state.selectedId}"]`);
-    if (row) row.classList.add('element-selected');
-  }
+  buildElementsList();
 }
 
 function onCanvasMouseMove(evt) {
@@ -1432,10 +1405,9 @@ function onCanvasMouseUp() {
   state.activeGuides = [];
   dui.canvas.style.cursor = 'default';
   renderPreview();
-  // With the drag over, a reflow is safe again: bring the inspector
-  // into the DOM (or update its contents) for the element the user
-  // picked up. This also refreshes the row's name/size badge if they
-  // changed mid-drag (e.g. text resize changes fontSize).
+  // After a resize, the row's size/fontSize badge on the left list is
+  // now stale — refresh the list + inspector so the compact row's
+  // "W×H" / "Npt" label matches reality.
   if (wasDragging) buildElementsList();
 }
 
