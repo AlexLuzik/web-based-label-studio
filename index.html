@@ -322,7 +322,20 @@
                   </div>
                 </div>
               </div>
-              <div id="elementsList" class="elements-list mb-3"></div>
+              <!-- Elements list on the left (compact rows: grip, type icon,
+                   name, size badge) + Inspector on the right (full editor
+                   for the currently-selected element). The inspector owns
+                   the per-element form fields + action buttons (center,
+                   move up/down, delete); the list is click-to-select and
+                   drag-to-reorder only. -->
+              <div class="row g-3 mb-3">
+                <div class="col-12 col-lg-7">
+                  <div id="elementsList" class="elements-list"></div>
+                </div>
+                <div class="col-12 col-lg-5">
+                  <div id="inspector" class="inspector h-100"></div>
+                </div>
+              </div>
 
               <!-- Preview header: left-side eyebrow label, right-side toggles. -->
               <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">

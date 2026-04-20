@@ -1458,6 +1458,18 @@ function centerSelected(axis) {
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
 // ---------- Element list / inspector ----------
+//
+// The list and the inspector are TWO separate panes (per the design
+// handoff): a compact `.elements-list` on the left — one `.element-row`
+// per element, just a grip + type icon + name + size badge — and a
+// `.inspector` on the right that renders the full editor for whichever
+// element is currently selected.
+//
+// `buildElementsList()` renders the list rows AND re-fills the
+// inspector, so callers that previously used it as a "rebuild
+// everything" entry point keep working. If you only need to refresh
+// the inspector (e.g. the selection changed but the list topology
+// didn't), call `renderInspector()` directly — it's cheaper.
 
 function buildElementsList() {
   const root = dui.elementsList;
@@ -1468,6 +1480,7 @@ function buildElementsList() {
         <i class="bi bi-plus-circle d-block mb-1" style="font-size:1.5rem"></i>
         Use the <b>Add</b> button to insert an element
       </div>`;
+    renderInspector();
     return;
   }
   // Display in reverse so the top-most layer appears at the top of the list
@@ -1480,73 +1493,169 @@ function buildElementsList() {
     if (state.selectedId === el.id) row.classList.add('element-selected');
     if (state.errors[el.id]) row.classList.add('element-error');
     row.dataset.id = el.id;
-    row.innerHTML = renderElementEditor(el, i);
+    row.innerHTML = renderElementRowCompact(el);
     row.addEventListener('click', (e) => {
-      // Don't hijack clicks on form controls — `label` matters for btn-check toggles
-      // (Bootstrap's <input class="btn-check"> + <label> pattern), otherwise we'd
-      // rebuild the DOM before the label forwards the click to its checkbox.
-      if (e.target.closest('input,select,button,label,[data-act]')) return;
+      // Clicks on the grip start a drag, don't also select — pointerdown
+      // already called preventDefault there.
+      if (e.target.closest('.grip')) return;
       if (state.selectedId === el.id) return;
       state.selectedId = el.id;
       renderPreview();
-      buildElementsList();
+      // Only the row's `.element-selected` highlight and the inspector's
+      // contents change; the list's row topology is unaffected, so skip
+      // the full `buildElementsList` and just toggle the classes +
+      // refresh the inspector.
+      root.querySelectorAll('.element-row.element-selected').forEach(r => r.classList.remove('element-selected'));
+      row.classList.add('element-selected');
+      renderInspector();
     });
     root.appendChild(row);
   }
-  root.querySelectorAll('[data-act]').forEach(btn => {
+
+  // Wire the `.grip` drag handles on each row for pointer-based
+  // reorder. Bound on every rebuild because the old rows are gone.
+  wireElementsDragReorder();
+
+  // Keep the inspector in sync with the new list snapshot (selection
+  // may have been cleared, elements may have been added / removed,
+  // etc.).
+  renderInspector();
+}
+
+/**
+ * One compact row in the left-hand list: grip + type-tinted icon +
+ * element name + size badge. No form fields, no per-element actions —
+ * those live in the inspector. Returns the row's innerHTML; the
+ * wrapping `.element-row[data-id=…]` is applied by the caller.
+ */
+function renderElementRowCompact(el) {
+  const errorBadge = state.errors[el.id]
+    ? ` <span class="badge text-bg-danger small ms-1" title="${escHtml(state.errors[el.id])}"><i class="bi bi-exclamation-triangle-fill"></i></span>`
+    : '';
+  const name = escHtml(elementRowLabel(el));
+  // Size badge: W×H in px. Text-like elements don't store w/h meaningfully,
+  // so show just the font size for them.
+  let sizeBadge = '';
+  if (isTextLike(el)) {
+    sizeBadge = `${(el.fontSize | 0) || 12}pt`;
+  } else {
+    sizeBadge = `${(el.w | 0)}×${(el.h | 0)}`;
+  }
+  return `
+    <span class="grip" role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></span>
+    <span class="etype" title="${escHtml(elementTitle(el.type))}">${elementIcon(el.type)}</span>
+    <span class="ename">${name}${errorBadge}</span>
+    <span class="ebadge">${sizeBadge}</span>
+  `;
+}
+
+/**
+ * Short human-readable label for an element — used in the compact row.
+ * Text-like elements surface their content; other elements fall back
+ * to their type title.
+ */
+function elementRowLabel(el) {
+  if (!el) return '';
+  if (el.type === 'text' && el.text)    return el.text;
+  if (el.type === 'counter')            return elementText(el, 0) || 'Counter';
+  if (el.type === 'barcode' && el.data) return `Barcode · ${el.data}`;
+  if (el.type === 'qr' && el.kind)      return `QR · ${el.kind}`;
+  if (el.type === 'datamatrix' && el.data) return `DM · ${el.data}`;
+  if (el.type === 'icon' && el.icon)    return `Icon · ${el.icon}`;
+  return elementTitle(el.type);
+}
+
+/**
+ * Populates the right-hand `#inspector` with the full editor for the
+ * currently-selected element. When nothing is selected, shows a short
+ * hint. `#inspector.dataset.elementId` carries the active element id
+ * so input handlers below can locate it without walking parents.
+ */
+function renderInspector() {
+  const ins = dui.inspector;
+  if (!ins) return;
+  const el = state.elements.find(e => e.id === state.selectedId);
+
+  if (!el) {
+    delete ins.dataset.elementId;
+    ins.innerHTML = `
+      <div class="text-center text-body-secondary small py-4">
+        <i class="bi bi-box-arrow-in-down-left d-block mb-2" style="font-size:1.5rem;opacity:.6"></i>
+        Select an element on the left to edit its properties.
+      </div>`;
+    return;
+  }
+
+  // Locate the element's visual index in the array for "up/down" button
+  // enabled/disabled state inside the editor header.
+  const idx = state.elements.findIndex(e => e.id === el.id);
+  ins.dataset.elementId = el.id;
+  ins.innerHTML = renderElementEditor(el, idx);
+
+  // Action buttons (center, up/down layer, delete) — now live inside
+  // the inspector header (same markup `renderElementEditor` produces).
+  ins.querySelectorAll('[data-act]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       handleElementAction(btn);
     });
   });
-  root.querySelectorAll('[data-bind]').forEach(inp => {
+
+  // Form inputs — the `data-bind` mini-framework from before, adapted
+  // to read the active element id from the inspector itself.
+  ins.querySelectorAll('[data-bind]').forEach(inp => {
     const handler = () => {
-      const id = inp.closest('.element-row').dataset.id;
+      const id = ins.dataset.elementId;
       const key = inp.dataset.bind;
-      const el = state.elements.find(e => e.id === id);
-      if (!el) return;
+      const elem = state.elements.find(x => x.id === id);
+      if (!elem) return;
       let v = inp.value;
-      if (inp.type === 'number') v = (inp.step && inp.step.includes('.') ? parseFloat(v) : parseInt(v, 10)) || 0;
+      if (inp.type === 'number')   v = (inp.step && inp.step.includes('.') ? parseFloat(v) : parseInt(v, 10)) || 0;
       if (inp.type === 'checkbox') v = inp.checked;
-      // P1.11 — if the input renders mm, convert back to px before storing.
-      if (inp.dataset.unit === 'mm' && ['x', 'y', 'w', 'h'].includes(key)) {
-        v = mmToPxStored(v);
-      }
-      el[key] = v;
-      // Changing QR kind requires a full inspector rebuild (field set changes)
+      if (inp.dataset.unit === 'mm' && ['x','y','w','h'].includes(key)) v = mmToPxStored(v);
+      elem[key] = v;
+
       if (key === 'kind') {
+        // QR kind swaps out whole field sets — full inspector rebuild.
         renderPreview();
-        buildElementsList();
-      } else {
-        renderPreview();
-        // Counter elements carry a "Generates N labels: first → last"
-        // summary line in the inspector — refresh it in place when any
-        // counter-related field changes, so prefix/suffix/start/step/
-        // count/padLen edits update the live preview without rebuilding
-        // the whole row (which would steal focus from the input the
-        // user is still typing into).
-        if (el.type === 'counter' &&
-            ['prefix', 'suffix', 'startNum', 'step', 'count', 'padLen'].includes(key)) {
-          const row = inp.closest('.element-row');
-          const box = row && row.querySelector('.counter-preview');
-          if (box) {
-            const lastIdx  = Math.max(0, (el.count | 0) - 1);
-            const firstPrev = escHtml(elementText(el, 0));
-            const lastPrev  = escHtml(elementText(el, lastIdx));
-            box.innerHTML =
-              `Generates <b>${el.count | 0}</b> labels: <code>${firstPrev}</code>` +
-              ` <i class="bi bi-arrow-right mx-1"></i> <code>${lastPrev}</code>`;
-          }
+        renderInspector();
+        return;
+      }
+
+      renderPreview();
+
+      // Element-name in the LEFT list reflects text content, counter
+      // previews and a few other fields. Keep it live without rebuilding
+      // the entire list (and losing the inspector's input focus).
+      const listRow = dui.elementsList.querySelector(`.element-row[data-id="${id}"]`);
+      if (listRow) {
+        const nameEl  = listRow.querySelector('.ename');
+        const badgeEl = listRow.querySelector('.ebadge');
+        if (nameEl)  nameEl.innerHTML  = escHtml(elementRowLabel(elem));
+        if (badgeEl) badgeEl.textContent = isTextLike(elem)
+          ? `${(elem.fontSize | 0) || 12}pt`
+          : `${(elem.w | 0)}×${(elem.h | 0)}`;
+      }
+
+      // Counter inspector carries a "Generates N labels: first → last"
+      // summary — refresh it in place so the user sees the range update
+      // as they type prefix/suffix/start/step/count/padLen.
+      if (elem.type === 'counter' &&
+          ['prefix','suffix','startNum','step','count','padLen'].includes(key)) {
+        const box = ins.querySelector('.counter-preview');
+        if (box) {
+          const lastIdx   = Math.max(0, (elem.count | 0) - 1);
+          const firstPrev = escHtml(elementText(elem, 0));
+          const lastPrev  = escHtml(elementText(elem, lastIdx));
+          box.innerHTML =
+            `Generates <b>${elem.count | 0}</b> labels: <code>${firstPrev}</code>` +
+            ` <i class="bi bi-arrow-right mx-1"></i> <code>${lastPrev}</code>`;
         }
       }
     };
-    inp.addEventListener('input', handler);
+    inp.addEventListener('input',  handler);
     inp.addEventListener('change', handler);
   });
-
-  // Wire the `.grip` drag handles on each row for pointer-based
-  // reorder. Bound on every rebuild because the old rows are gone.
-  wireElementsDragReorder();
 }
 
 /* =====================================================================
@@ -1599,13 +1708,13 @@ function _elDragOnGripDown(ev) {
 
   const srcRect = sourceRow.getBoundingClientRect();
 
-  // Build the floating ghost. A clone of the row's head line is
-  // enough — the full inspector body would be visually noisy on
-  // large rows and unnecessary for understanding the drag target.
+  // The compact row is already small (grip + icon + name + badge), so
+  // clone its entire innerHTML into the floating ghost. `.drag-ghost`
+  // CSS hides the grip so the ghost reads as a "card being carried",
+  // not as the drag-handle itself.
   const ghost = document.createElement('div');
-  ghost.className = 'drag-ghost';
-  const head = sourceRow.querySelector('.element-head');
-  ghost.innerHTML = head ? head.outerHTML : '';
+  ghost.className = 'drag-ghost element-row';
+  ghost.innerHTML = sourceRow.innerHTML;
   ghost.style.width = `${srcRect.width}px`;
   document.body.appendChild(ghost);
 
@@ -1755,11 +1864,18 @@ function _elDragCleanup(withRelease) {
   _elDrag = null;
 }
 
+/**
+ * Reflect X/Y/W/H changes from canvas-drag into the Inspector inputs.
+ * The inputs live inside `#inspector` (post-split), keyed off the
+ * active element id stored on `inspector.dataset.elementId`. Skips
+ * the currently-focused input so we don't clobber a value the user
+ * is typing.
+ */
 function updateInspectorFields(el) {
-  const row = dui.elementsList.querySelector(`.element-row[data-id="${el.id}"]`);
-  if (!row) return;
+  const ins = dui.inspector;
+  if (!ins || ins.dataset.elementId !== el.id) return;
   for (const key of ['x', 'y', 'w', 'h']) {
-    const inp = row.querySelector(`[data-bind="${key}"]`);
+    const inp = ins.querySelector(`[data-bind="${key}"]`);
     if (inp && inp !== document.activeElement && el[key] != null) {
       // Respect the inspector's mm/px unit toggle so live drag updates don't
       // clobber the displayed value with the raw px.
@@ -1771,10 +1887,11 @@ function updateInspectorFields(el) {
 function renderElementEditor(el, idx) {
   const errorBadge = state.errors[el.id]
     ? `<span class="badge text-bg-danger small ms-1" title="${escHtml(state.errors[el.id])}"><i class="bi bi-exclamation-triangle-fill"></i></span>` : '';
+  // `renderElementEditor` feeds the RIGHT-SIDE inspector only (the left
+  // list uses `renderElementRowCompact`). No grip handle here — drag
+  // lives on the compact row.
   const common = `
     <div class="element-head">
-      <span class="grip" role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></span>
-      <span class="element-index badge text-bg-secondary">${idx + 1}</span>
       <span class="element-type">${elementIcon(el.type)} ${elementTitle(el.type)}${errorBadge}</span>
       <div class="ms-auto btn-group btn-group-sm">
         <button class="btn btn-outline-secondary" data-act="center-h" title="Center horizontally"><i class="bi bi-arrows-collapse-vertical"></i></button>
@@ -2093,7 +2210,14 @@ function escHtml(s) {
 }
 
 function handleElementAction(btn) {
-  const id = btn.closest('.element-row').dataset.id;
+  // Buttons now live in the inspector (post-split) — find the active
+  // element via `#inspector.dataset.elementId`. Fall back to the
+  // legacy `.element-row` closure in case some code path still
+  // renders the editor inline.
+  const ins = dui.inspector;
+  const id = (ins && ins.dataset.elementId)
+          || btn.closest('.element-row')?.dataset.id;
+  if (!id) return;
   const idx = state.elements.findIndex(e => e.id === id);
   if (idx < 0) return;
   const act = btn.dataset.act;
@@ -3148,6 +3272,7 @@ function initLabelDesigner() {
   dui.dither = qs('#lblDither');
   dui.canvas = qs('#labelCanvas');
   dui.elementsList = qs('#elementsList');
+  dui.inspector = qs('#inspector');
   dui.designerSizeHint = qs('#designerSizeHint');
   dui.previewPxHint = qs('#previewPxHint');
   dui.queueList = qs('#queueList');
