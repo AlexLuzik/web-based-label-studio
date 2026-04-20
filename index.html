@@ -264,9 +264,23 @@
               <div class="row g-3 align-items-center mb-3">
                 <div class="col-12 col-md-5">
                   <div class="cartridge-diagram" aria-label="Cartridge geometry">
-                    <span class="cd-width-label">Width<br><span data-role="w">—</span>&nbsp;mm</span>
+                    <!-- Width and Length share the same markup: a label
+                         word, a flexible `.line` with triangle arrowheads
+                         at each end, and a value. The two axes then just
+                         differ by flex direction in CSS — vertical for
+                         Width, horizontal for Length — so they read as
+                         the same visual pattern rotated 90°. -->
+                    <div class="cd-axis cd-axis-v">
+                      <span>Width</span>
+                      <span class="line"></span>
+                      <span><span data-role="w">—</span>&nbsp;mm</span>
+                    </div>
                     <div class="cd-label-shape" aria-hidden="true"></div>
-                    <div class="cd-length-axis"><span>Length</span><span class="line"></span><span><span data-role="l">—</span>&nbsp;mm</span></div>
+                    <div class="cd-axis cd-axis-h">
+                      <span>Length</span>
+                      <span class="line"></span>
+                      <span><span data-role="l">—</span>&nbsp;mm</span>
+                    </div>
                   </div>
                 </div>
                 <div class="col-6 col-md-2">

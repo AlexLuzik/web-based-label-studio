@@ -547,72 +547,125 @@ body > main > footer {
  * Cartridge geometry diagram
  * ========================================================================= */
 
-/* Compact cartridge diagram. Width label runs vertically on the
- * left, length label horizontally below the label shape — but both
- * use the SAME uppercase-mono visual language (font size, weight,
- * letter-spacing, accent-colored triangle arrows at the axis ends).
- * Everything fits in ~70 px of vertical space, ~40% tighter than
- * the original prototype. */
+/* Compact cartridge diagram. Width and Length axes share one
+ * `.cd-axis` class — the only difference is flex direction
+ * (column for Width, row for Length). Both render as:
+ *
+ *     LABEL  ◂———————▸  VALUE
+ *
+ * one rotated vertical, one horizontal, with identical typography,
+ * spacing and triangle arrowheads. `--cd-arrow` governs arrow
+ * half-length so fine-tuning only touches one token. */
 .cartridge-diagram {
-  --cd-axis-size: 0.62rem;
-  --cd-arrow: 4px;   /* arrowhead half-length — matches on both axes */
+  --cd-axis-size: 0.6rem;
+  --cd-arrow: 4px;
 
   background: var(--bs-secondary-bg);
   border: 1px solid var(--bs-border-color);
   border-radius: 8px;
   padding: 0.45rem 0.7rem;
+  /* Cap overall width so the diagram sits as a compact widget
+   * rather than stretching to fill the whole column. */
+  max-width: 220px;
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto;
-  gap: 0.25rem 0.6rem;
+  gap: 0.25rem 0.5rem;
   align-items: center;
   color: var(--bs-body-color);
   font-size: var(--cd-axis-size);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  line-height: 1;
 }
 
-/* Shared axis styling: both width (vertical) and length (horizontal)
- * read as `LABEL ← — — — → VALUE` with the same visual weight. */
-.cartridge-diagram .cd-width-label,
-.cartridge-diagram .cd-length-axis {
+/* Shared axis — single source of visual truth for Width + Length. */
+.cartridge-diagram .cd-axis {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
-/* Width (vertical) — `vertical-rl + rotate(180)` flips the inline
- * flow to read bottom-to-top on the left edge of the diagram. */
-.cartridge-diagram .cd-width-label {
+/* The axis line (between LABEL and VALUE) stretches to fill the
+ * space between them. Arrows live on its ::before/::after, rendered
+ * past either end so the visual is `◂————▸`. */
+.cartridge-diagram .cd-axis .line {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 1px;
+  position: relative;
+}
+.cartridge-diagram .cd-axis .line::before,
+.cartridge-diagram .cd-axis .line::after {
+  content: "";
+  position: absolute;
+  width: 0; height: 0;
+  border-style: solid;
+}
+
+/* Vertical axis (Width). Lives in the left grid column, spans both
+ * grid rows so it runs the full height of the label shape + length
+ * axis. `flex-direction: column` + `align-items: center` keeps
+ * LABEL / line / VALUE centred on a vertical axis. */
+.cartridge-diagram .cd-axis-v {
   grid-column: 1;
   grid-row: 1 / span 2;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  text-align: center;
+  flex-direction: column;
+  min-height: 44px;
 }
-/* Vertical axis line with up / down arrowheads so the Width label
- * visually mirrors the Length axis below. */
-.cartridge-diagram .cd-width-label::before,
-.cartridge-diagram .cd-width-label::after {
-  content: ""; width: 0; height: 0; border-style: solid;
+.cartridge-diagram .cd-axis-v .line {
+  width: 2px;              /* thin vertical line */
+  min-height: 14px;
+  align-self: center;
 }
-.cartridge-diagram .cd-width-label::before {
-  /* The rotate(180) above means ::before renders at the BOTTOM of
-   * the rotated element — so this triangle points toward the top
-   * (since its down-face is the visible one post-rotate). */
+.cartridge-diagram .cd-axis-v .line::before {
+  /* Arrow at the TOP of the line, pointing up. */
+  top: calc(-1 * var(--cd-arrow));
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 3px var(--cd-arrow) 3px;
+  border-color: transparent transparent var(--accent-start) transparent;
+}
+.cartridge-diagram .cd-axis-v .line::after {
+  /* Arrow at the BOTTOM of the line, pointing down. */
+  bottom: calc(-1 * var(--cd-arrow));
+  left: 50%;
+  transform: translateX(-50%);
   border-width: var(--cd-arrow) 3px 0 3px;
   border-color: var(--accent-start) transparent transparent transparent;
 }
-.cartridge-diagram .cd-width-label::after {
-  border-width: 0 3px var(--cd-arrow) 3px;
-  border-color: transparent transparent var(--accent-start) transparent;
+
+/* Horizontal axis (Length). Sits in the right column, below the
+ * label-shape row. */
+.cartridge-diagram .cd-axis-h {
+  grid-column: 2;
+  grid-row: 2;
+}
+.cartridge-diagram .cd-axis-h .line {
+  height: 2px;             /* thin horizontal line */
+}
+.cartridge-diagram .cd-axis-h .line::before {
+  /* Arrow at the LEFT end, pointing left. */
+  left: calc(-1 * var(--cd-arrow) + 1px);
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 3px var(--cd-arrow) 3px 0;
+  border-color: transparent var(--accent-end) transparent transparent;
+}
+.cartridge-diagram .cd-axis-h .line::after {
+  /* Arrow at the RIGHT end, pointing right. */
+  right: calc(-1 * var(--cd-arrow) + 1px);
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 3px 0 3px var(--cd-arrow);
+  border-color: transparent transparent transparent var(--accent-end);
 }
 
 .cartridge-diagram .cd-label-shape {
   grid-column: 2; grid-row: 1;
-  height: 24px;           /* was 38px — tighter proportions */
+  height: 24px;
   background: #fff;
   border-radius: 2px;
   position: relative;
@@ -625,38 +678,6 @@ body > main > footer {
 .cartridge-diagram .cd-label-shape::after {
   content: ""; position: absolute; bottom: 3px; left: 5px; right: 40%; height: 4px;
   background: repeating-linear-gradient(90deg, #0c1017 0 1px, transparent 1px 2px);
-}
-
-/* Length (horizontal). Same typography as Width — just laid out
- * horizontally rather than vertically. */
-.cartridge-diagram .cd-length-axis {
-  grid-column: 2;
-  grid-row: 2;
-}
-.cartridge-diagram .cd-length-axis .line {
-  flex: 1; height: 2px;
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 1px;
-  position: relative;
-}
-.cartridge-diagram .cd-length-axis .line::before,
-.cartridge-diagram .cd-length-axis .line::after {
-  content: "";
-  position: absolute;
-  top: calc(-1 * var(--cd-arrow) + 1px);
-  width: 0; height: 0;
-  border-style: solid;
-}
-.cartridge-diagram .cd-length-axis .line::before {
-  left: 0;
-  /* Match the width-label arrow dimensions: arrow length × 3 px half-base. */
-  border-width: var(--cd-arrow) 3px var(--cd-arrow) 0;
-  border-color: transparent var(--accent-end) transparent transparent;
-}
-.cartridge-diagram .cd-length-axis .line::after {
-  right: 0;
-  border-width: var(--cd-arrow) 0 var(--cd-arrow) 3px;
-  border-color: transparent transparent transparent var(--accent-end);
 }
 
 /* =========================================================================
