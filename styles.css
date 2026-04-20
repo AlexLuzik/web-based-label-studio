@@ -768,17 +768,25 @@ body > main > footer {
 
 /* Floating element-inspector popover.
  *
- * Positioned above (or below, when squeezed) the selected canvas
- * element by JS (`positionInspector`). Lives at body level at
- * `position: fixed` so it sits on top of everything designer-card-
- * related without reflowing siblings. Scrollable when the form
- * overflows (e.g. Counter's ten fields on a narrow viewport). */
+ * Anchored to the RIGHT of the currently-selected canvas element via
+ * `positionInspector`, with an arrow pointing back at the element.
+ * Flips to the LEFT side when there isn't enough horizontal room.
+ * Vertically centred on the element and clamped inside the viewport.
+ * `position: fixed` so it sits on top of the designer card without
+ * reflowing siblings; scrolls internally when the form is tall
+ * (e.g. Counter's 10+ fields).
+ *
+ * Placement is driven by `data-placement="right" | "left"` — only
+ * the arrow's side switches with it, everything else is symmetric.
+ * The arrow's vertical position is set by JS as `--arrow-top` so
+ * it tracks the element's centre even when the popover is clamped
+ * off-centre. */
 .inspector {
   position: fixed;
   top: 0;
   left: 0;
   z-index: 1050;               /* above navbar + offcanvas scrim, below modals */
-  width: min(420px, calc(100vw - 32px));
+  width: min(400px, calc(100vw - 32px));
   max-height: min(70vh, 540px);
   overflow: auto;
   background: var(--bs-tertiary-bg);
@@ -788,17 +796,68 @@ body > main > footer {
   box-shadow:
     0 24px 48px -12px rgba(0, 0, 0, 0.6),
     0 0 0 3px rgba(99, 102, 241, 0.12);
-  /* Fade + tiny scale-in on appear. `.is-showing` is the gatekeeper —
-   * transition runs only when the popover is actually visible
-   * (`d-none` removed). */
+  /* JS writes this to keep the arrow pointed at the element centre. */
+  --arrow-top: 50%;
+  /* Fade + tiny slide-in on appear. `.is-showing` is the gatekeeper —
+   * transition runs only when the popover is actually visible. */
   opacity: 0;
-  transform: scale(0.97);
-  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  transform: translateX(-4px) scale(0.98);
+  transition: opacity 140ms ease-out, transform 140ms ease-out;
+}
+.inspector[data-placement="left"] {
+  transform: translateX(4px) scale(0.98);
 }
 .inspector.is-showing {
   opacity: 1;
-  transform: scale(1);
+  transform: translateX(0) scale(1);
 }
+
+/* Arrow pointing from the popover to the anchored element. When the
+ * popover is on the RIGHT of the element, the arrow sits on the
+ * popover's LEFT edge pointing LEFT (toward the element). When
+ * flipped LEFT, it's on the popover's RIGHT edge pointing RIGHT. */
+.inspector::before,
+.inspector::after {
+  content: "";
+  position: absolute;
+  top: var(--arrow-top);
+  width: 0;
+  height: 0;
+  border-style: solid;
+  pointer-events: none;
+}
+
+/* Placement: right (default). Arrow at the popover's left edge. */
+.inspector[data-placement="right"]::before {
+  left: -9px;
+  margin-top: -9px;
+  border-width: 9px 9px 9px 0;
+  /* Matches the popover border color so the arrow's edge blends. */
+  border-color: transparent var(--bs-border-color) transparent transparent;
+}
+.inspector[data-placement="right"]::after {
+  left: -8px;
+  margin-top: -8px;
+  border-width: 8px 8px 8px 0;
+  /* Matches the popover fill — sits 1px inside the border triangle
+   * so the combined effect mimics a bordered arrow. */
+  border-color: transparent var(--bs-tertiary-bg) transparent transparent;
+}
+
+/* Placement: left (flipped). Arrow at the popover's right edge. */
+.inspector[data-placement="left"]::before {
+  right: -9px;
+  margin-top: -9px;
+  border-width: 9px 0 9px 9px;
+  border-color: transparent transparent transparent var(--bs-border-color);
+}
+.inspector[data-placement="left"]::after {
+  right: -8px;
+  margin-top: -8px;
+  border-width: 8px 0 8px 8px;
+  border-color: transparent transparent transparent var(--bs-tertiary-bg);
+}
+
 /* Tiny close button in the popover's top-right. */
 .inspector .inspector-close {
   position: absolute;
@@ -814,6 +873,7 @@ body > main > footer {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  z-index: 1;
 }
 .inspector .inspector-close:hover {
   background: rgba(255, 255, 255, 0.06);

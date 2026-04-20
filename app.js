@@ -1756,24 +1756,29 @@ function hideInspector() {
   const ins = dui.inspector;
   if (!ins) return;
   delete ins.dataset.elementId;
+  delete ins.dataset.placement;
   ins.classList.remove('is-showing');
   ins.classList.add('d-none');
   ins.innerHTML = '';
-  // Reset inline position so the next show starts clean — fresh
-  // measurements, no leftover top/left from the previous element.
+  // Reset inline position + arrow offset so the next show starts
+  // clean — fresh measurements, no leftover top/left/arrow from
+  // the previous element.
   ins.style.top = '';
   ins.style.left = '';
+  ins.style.removeProperty('--arrow-top');
 }
 
 /**
- * Place the floating inspector above the currently-selected element.
+ * Place the floating inspector to the RIGHT of the currently-selected
+ * element, with an arrow pointing back at it. Flips to the LEFT side
+ * when there isn't enough room on the right (e.g. the element is
+ * against the right edge of the viewport).
  *
- * Default placement: centred horizontally on the element, `MARGIN` px
- * above its top edge. If there isn't enough room above (element near
- * the top of the viewport / popover too tall), flip to below. Finally
- * clamp the popover fully inside the viewport with a small margin —
- * a short element hugging the screen edge still produces a readable
- * popover, not one cut in half by the window bounds.
+ * Vertically centred on the element's mid-line, then clamped inside
+ * the viewport. `--arrow-top` is written so the arrow keeps pointing
+ * at the element's actual centre even when the popover was clamped
+ * off its natural vertical slot — the form stays readable AND the
+ * arrow still indicates what it's anchored to.
  */
 function positionInspector() {
   const ins = dui.inspector;
@@ -1793,25 +1798,41 @@ function positionInspector() {
   const bbox = getElementBBox(el, ctx);
   const elLeft   = canvasRect.left + bbox.x * scaleX;
   const elTop    = canvasRect.top  + bbox.y * scaleY;
-  const elWidth  = bbox.w * scaleX;
-  const elHeight = bbox.h * scaleY;
+  const elRight  = elLeft + bbox.w * scaleX;
+  const elCentreY = elTop + (bbox.h * scaleY) / 2;
 
   const popRect = ins.getBoundingClientRect();
-  const MARGIN = 8;
-  const EDGE   = 12;
+  const GAP  = 14;   // distance between popover edge and element (room for the arrow)
+  const EDGE = 12;   // viewport margin
 
-  // Vertical: above by default, below if above clips past the top edge.
-  let top = elTop - popRect.height - MARGIN;
-  if (top < EDGE) top = elTop + elHeight + MARGIN;
-  // Final clamp — if neither above nor below fits, pin to the viewport.
-  top = Math.max(EDGE, Math.min(window.innerHeight - popRect.height - EDGE, top));
-
-  // Horizontal: centre on the element, then clamp inside the viewport.
-  let left = elLeft + elWidth / 2 - popRect.width / 2;
+  // Horizontal: right by default; flip left when the popover wouldn't
+  // fit on the right side of the element.
+  let placement = 'right';
+  let left = elRight + GAP;
+  if (left + popRect.width > window.innerWidth - EDGE) {
+    placement = 'left';
+    left = elLeft - GAP - popRect.width;
+  }
+  // Last-resort clamp — if neither side actually fits (very narrow
+  // viewport), pin to whichever edge keeps more of the popover on
+  // screen. The arrow will still point at the element's Y centre.
   left = Math.max(EDGE, Math.min(window.innerWidth - popRect.width - EDGE, left));
 
+  // Vertical: centre the popover on the element's Y-mid, then clamp.
+  let top = elCentreY - popRect.height / 2;
+  top = Math.max(EDGE, Math.min(window.innerHeight - popRect.height - EDGE, top));
+
+  // Arrow Y in popover-local coords = element centre − popover top.
+  // If the popover was clamped far from the element (e.g. element
+  // near the top edge of a short viewport), the arrow could land
+  // outside the popover; clamp so it always hits an edge within
+  // the rounded border.
+  const arrowTop = Math.max(14, Math.min(popRect.height - 14, elCentreY - top));
+
+  ins.dataset.placement = placement;
   ins.style.top  = `${Math.round(top)}px`;
   ins.style.left = `${Math.round(left)}px`;
+  ins.style.setProperty('--arrow-top', `${Math.round(arrowTop)}px`);
 }
 
 /* =====================================================================
