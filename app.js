@@ -1771,65 +1771,68 @@ function hideInspector() {
 }
 
 /**
- * Place the floating inspector to the RIGHT of the currently-selected
- * element, with an arrow pointing back at it. Flips to the LEFT side
- * when there isn't enough room on the right (e.g. the element is
- * against the right edge of the viewport).
+ * Place the floating inspector next to the selected ELEMENT's row in
+ * the left-hand list (not next to its image on the canvas). The row
+ * is a stable, always-visible UI anchor — canvas elements can be
+ * tiny (a 12 px barcode), clipped by the designer-card gutter, or
+ * offscreen on a scrolled canvas wrap, and anchoring to them made
+ * the popover land in unhelpful places.
  *
- * Vertically centred on the element's mid-line, then clamped inside
- * the viewport. `--arrow-top` is written so the arrow keeps pointing
- * at the element's actual centre even when the popover was clamped
- * off its natural vertical slot — the form stays readable AND the
- * arrow still indicates what it's anchored to.
+ * Default placement is RIGHT of the row. Flips LEFT when there's
+ * no room on the right (narrow viewport, wide row). Vertically
+ * centred on the row and clamped inside the viewport; `--arrow-top`
+ * is written so the arrow keeps pointing at the row's centre even
+ * when the popover was clamped off its natural vertical slot.
  */
 function positionInspector() {
   const ins = dui.inspector;
   if (!ins || ins.classList.contains('d-none')) return;
-  const el = state.elements.find(e => e.id === state.selectedId);
-  if (!el) return;
-  const canvas = dui.canvas;
-  if (!canvas) return;
+  if (!state.selectedId) return;
 
-  // Element bbox in canvas-buffer pixels → viewport pixels, scaling
-  // for any CSS compression (narrow viewports where `max-width: 100%`
-  // shrinks the canvas below its drawing-buffer resolution).
-  const canvasRect = canvas.getBoundingClientRect();
-  const scaleX = canvasRect.width  ? canvasRect.width  / canvas.width  : 1;
-  const scaleY = canvasRect.height ? canvasRect.height / canvas.height : 1;
-  const ctx = canvas.getContext('2d');
-  const bbox = getElementBBox(el, ctx);
-  const elLeft   = canvasRect.left + bbox.x * scaleX;
-  const elTop    = canvasRect.top  + bbox.y * scaleY;
-  const elRight  = elLeft + bbox.w * scaleX;
-  const elCentreY = elTop + (bbox.h * scaleY) / 2;
+  // Anchor = the `.element-row` in the left list for the selected
+  // element. If it's missing (shouldn't happen — buildElementsList
+  // renders every element) or the list is hidden (pre-connect, wrong
+  // tab), bail; hideInspector would already have been called in that
+  // case via the normal flow.
+  const list = dui.elementsList;
+  if (!list) return;
+  const row = list.querySelector(`.element-row[data-id="${state.selectedId}"]`);
+  if (!row) return;
 
+  // Make sure the anchor row is within the list's scrollable viewport,
+  // otherwise the popover would appear to float beside thin air.
+  // `block:'nearest'` only scrolls when actually needed — it's a
+  // no-op when the row is already fully visible.
+  try { row.scrollIntoView({ block: 'nearest' }); } catch {}
+
+  const rowRect = row.getBoundingClientRect();
   const popRect = ins.getBoundingClientRect();
-  const GAP  = 14;   // distance between popover edge and element (room for the arrow)
+  const GAP  = 14;   // gap between row edge and popover (arrow sits here)
   const EDGE = 12;   // viewport margin
 
-  // Horizontal: right by default; flip left when the popover wouldn't
-  // fit on the right side of the element.
+  // Horizontal: right of the row by default; flip left when the
+  // popover wouldn't fit on the right.
   let placement = 'right';
-  let left = elRight + GAP;
+  let left = rowRect.right + GAP;
   if (left + popRect.width > window.innerWidth - EDGE) {
     placement = 'left';
-    left = elLeft - GAP - popRect.width;
+    left = rowRect.left - GAP - popRect.width;
   }
   // Last-resort clamp — if neither side actually fits (very narrow
   // viewport), pin to whichever edge keeps more of the popover on
-  // screen. The arrow will still point at the element's Y centre.
+  // screen. The arrow still points at the row's Y centre.
   left = Math.max(EDGE, Math.min(window.innerWidth - popRect.width - EDGE, left));
 
-  // Vertical: centre the popover on the element's Y-mid, then clamp.
-  let top = elCentreY - popRect.height / 2;
+  // Vertical: centre the popover on the row's Y-mid, then clamp.
+  const rowCentreY = rowRect.top + rowRect.height / 2;
+  let top = rowCentreY - popRect.height / 2;
   top = Math.max(EDGE, Math.min(window.innerHeight - popRect.height - EDGE, top));
 
-  // Arrow Y in popover-local coords = element centre − popover top.
-  // If the popover was clamped far from the element (e.g. element
-  // near the top edge of a short viewport), the arrow could land
-  // outside the popover; clamp so it always hits an edge within
-  // the rounded border.
-  const arrowTop = Math.max(14, Math.min(popRect.height - 14, elCentreY - top));
+  // Arrow Y in popover-local coords = row centre − popover top.
+  // Clamp so the arrow always hits a point within the popover's
+  // rounded border (14 px from each end keeps it clear of the
+  // border-radius corner).
+  const arrowTop = Math.max(14, Math.min(popRect.height - 14, rowCentreY - top));
 
   ins.dataset.placement = placement;
   ins.style.top  = `${Math.round(top)}px`;
