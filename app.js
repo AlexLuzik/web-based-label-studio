@@ -582,13 +582,29 @@ function main() {
       // Reset the UI to disconnected so the hero Connect button
       // becomes clickable again.
       setStatus('disconnected', 'disconnected');
-      // Silent path for the user-cancelled picker — no log spam,
-      // no error badge. Everything else (device unreachable,
-      // identity check failed, etc.) still gets logged.
+      const msg = e?.message || String(e);
+      // Three paths, in priority order:
+      //   1. User dismissed the browser's port picker — not an error,
+      //      no log spam, no toast.
+      //   2. Identity check rejected the device — the dedicated
+      //      'identity-failed' listener already surfaced the reason
+      //      (modal or switch-driver reload). Just log it; no toast,
+      //      or we'd double up with the modal already on screen.
+      //   3. Everything else (port busy in another tab, device gone,
+      //      permission revoked, etc.) — pre-connect the Advanced
+      //      log is hidden behind the hero screen, so a toast is the
+      //      only way the user sees the reason. Chrome's messages
+      //      ("Failed to open serial port. (Port is already open…)")
+      //      are informative enough to pass through verbatim.
       if (e && e.name === 'NotFoundError') {
         logLine('info', 'Connect cancelled (no port selected).');
+      } else if (e && e.isIdentityError) {
+        logLine('error', msg);
       } else {
-        logLine('error', e.message || String(e));
+        logLine('error', msg);
+        if (typeof showToast === 'function') {
+          showToast('Connect failed: ' + msg, 'error');
+        }
       }
     }
   });

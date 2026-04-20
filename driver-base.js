@@ -96,7 +96,12 @@ export class Driver extends EventTarget {
       const detected = verdict && verdict.detected;
       this._emit('identity-failed', detected ? { reason, detected } : { reason });
       try { await this.link.disconnect(); } catch {}
-      throw new Error(reason);
+      // `isIdentityError` lets the click-handler catch skip its generic
+      // toast — the 'identity-failed' listener already handled the UI
+      // (wrong-endpoint modal or switch-driver reload).
+      const err = new Error(reason);
+      err.isIdentityError = true;
+      throw err;
     }
   }
 
