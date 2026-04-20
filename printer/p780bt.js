@@ -16,6 +16,7 @@
 
 import { Driver } from './driver-base.js';
 import { ResponseParser } from './transport.js';
+import { detectDriverBySn } from './sn-registry.js';
 
 // ---------- Protocol constants ----------
 
@@ -550,16 +551,52 @@ export class P780BTDriver extends Driver {
       if (payload.length < 8) {
         return { ok: false, reason: 'The device answered with an unexpected frame. Not supported.' };
       }
-      // Payload should be 15 ASCII chars in [0-9A-Z]. Require at least 60% to match.
-      let good = 0;
-      for (const b of payload) {
-        if ((b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A)) good++;
+
+      // Decode SN + look it up in the vendor PrinterInfo.getName4Sn()
+      // table. Three outcomes:
+      //
+      //   1. SN prefix maps to the model we implement (P780 family) →
+      //      accept. This is the hot path.
+      //   2. SN prefix maps to a DIFFERENT known Aimotech model (e.g.
+      //      D480, Q30, M108) — the port does speak the protocol, but
+      //      our driver wasn't built for this model. Reject with the
+      //      specific model name so the user knows WHY.
+      //   3. SN prefix is not in the vendor table at all → it's either
+      //      a mislabelled port, a generic BT-SPP endpoint, or an
+      //      unrelated device. Reject with a generic message.
+      //
+      // The old path was a heuristic "≥60% of the payload is ASCII
+      // alphanumerics"; the registry-based check is stricter AND more
+      // informative (tells the user they got a D480 instead of saying
+      // "not a P780BT").
+      const snAscii = asciiDecode(payload.filter(b =>
+        (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A)
+      ));
+      const detected = detectDriverBySn(snAscii);
+
+      if (detected.driverId === 'p780bt') {
+        this._log('info', `Device verified: ${detected.vendorModel} (SN ${snAscii}).`);
+        return true;
       }
-      if ((good / payload.length) < 0.6) {
-        return { ok: false, reason: 'The device answered, but the serial number does not look like a P780BT.' };
+      if (detected.vendorModel) {
+        // Known Aimotech model, wrong one.
+        return {
+          ok: false,
+          reason:
+            `Connected printer is an Aimotech ${detected.vendorModel} ` +
+            `(serial ${snAscii}, prefix ${detected.prefix}). ` +
+            `This app currently only supports P780BT — a driver for ` +
+            `${detected.vendorModel} hasn't been written yet.`,
+        };
       }
-      this._log('info', 'Device verified as P780BT-family printer.');
-      return true;
+      // Unknown prefix — not an Aimotech-family device.
+      return {
+        ok: false,
+        reason:
+          `The device returned serial number "${snAscii}", which doesn't ` +
+          `match any known Aimotech printer model. ` +
+          `Most likely you picked the wrong entry in the Bluetooth picker.`,
+      };
     } catch (e) {
       return { ok: false, reason: 'Identity check failed: ' + (e.message || e) };
     }

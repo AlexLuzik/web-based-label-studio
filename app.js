@@ -318,13 +318,23 @@ driver.addEventListener('error', (ev) => {
   setStatus('error', 'error');
 });
 
-// Wrong-endpoint modal. Fires when the identity check rejects the port
-// (usually because the user picked a Standard-Serial / generic BT-SPP
-// node instead of the printer's dedicated entry). The Retry button
-// re-triggers the connect flow so the user can pick the correct port.
+// Wrong-endpoint modal. Fires when the identity check rejects the
+// port. The driver's reason string carries the reason — usually one
+// of three: (a) the user picked a generic Standard-Serial / BT-SPP
+// node instead of the printer's dedicated entry; (b) the connected
+// device is a DIFFERENT Aimotech printer model we don't have a
+// driver for; (c) it answered but the serial format is unknown.
+//
+// We surface the reason both in the Advanced log (for power users)
+// AND inline in the modal via `#wrongEndpointReason`, so the user
+// can read "Detected D480BT — driver not implemented" without
+// opening the log.
 driver.addEventListener('identity-failed', (ev) => {
-  const reason = ev.detail.reason;
+  const reason = ev.detail.reason || 'Identity check failed.';
+  logLine('error', 'Identity check failed: ' + reason);
   try {
+    const reasonEl = document.getElementById('wrongEndpointReason');
+    if (reasonEl) reasonEl.textContent = reason;
     const modalEl = document.getElementById('wrongEndpointModal');
     if (modalEl && window.bootstrap) {
       const modal = bootstrap.Modal.getOrCreateInstance(modalEl);

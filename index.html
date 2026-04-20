@@ -968,7 +968,15 @@
   <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
     <div class="modal-header"><h5 class="modal-title" id="wrongEndpointModalLabel"><i class="bi bi-bluetooth me-2 text-warning"></i>Wrong Bluetooth endpoint</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
     <div class="modal-body">
-      <p>That serial port didn't respond to our identity probe.</p>
+      <!-- Dynamic reason from the driver's identity-failed event.
+           Populated by app.js's event listener. Possible messages:
+             * Generic "didn't answer our probe"
+             * "Connected printer is an Aimotech D480BT — driver not
+               implemented yet" (SN prefix matched a known model but
+               not one we support)
+             * "Serial number XYZ doesn't match any known Aimotech
+               model — probably the wrong picker entry". -->
+      <p id="wrongEndpointReason">That serial port didn't respond to our identity probe.</p>
       <div class="alert alert-secondary bg-transparent border small mb-3">
         <div class="fw-semibold mb-1"><i class="bi bi-list-check me-1"></i>If you haven't connected yet</div>
         In the picker, pick the entry labelled <b class="mono">P780BT</b> or <b class="mono">JL_SPP</b>.
