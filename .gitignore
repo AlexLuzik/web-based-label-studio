@@ -1,7 +1,9 @@
 # ============================================================
-# Only `printer_web/` and `P780BT_protocol.md` ship publicly.
+# Only the source files shipped by the project are tracked.
 # Everything below is either vendor IP (kept local for
-# reverse-engineering reference) or local tooling/captures.
+# reverse-engineering reference), ephemeral captures, tool
+# config, or editor cruft — none of it belongs in a public
+# commit.
 # NOTE: .gitignore does not support inline comments on the
 # same line as a pattern — every comment lives on its own line.
 # ============================================================
@@ -9,12 +11,18 @@
 # ---- Vendor decompiled sources (local reference only) ----
 printmaster_src/
 
+# ---- Design handoff bundles (downloaded locally when iterating UI) ----
+design/
+
 # ---- Bluetooth HCI capture + its path pointer ----
 btsnoop_hci.log
 btsnoop_path.txt
 
 # ---- Claude Code local workspace settings ----
 .claude/
+
+# ---- Project-scoped Claude Code instructions (private guidance file) ----
+CLAUDE.md
 
 # ---- Editor / OS cruft ----
 .DS_Store
