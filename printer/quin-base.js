@@ -534,13 +534,17 @@ export class QuinPrinterDriver extends Driver {
         this._log('info', `Device verified: ${detected.vendorModel} (SN ${snAscii}).`);
         return true;
       }
-      // 2) Known Aimotech model, wrong driver for the job.
+      // 2) Known Aimotech model, wrong driver for the job. Pass the
+      //    `detected` payload through so the UI can auto-swap drivers
+      //    (save to localStorage + reload) rather than making the user
+      //    figure out the driver id.
       if (detected.vendorModel) {
         const driverHint = detected.driverId
           ? `Use the "${detected.driverId}" driver id to connect to this model instead.`
           : `A driver for ${detected.vendorModel} hasn't been written yet.`;
         return {
           ok: false,
+          detected,
           reason:
             `Connected printer is an Aimotech ${detected.vendorModel} ` +
             `(serial ${snAscii}, prefix ${detected.prefix}). ` +
@@ -550,6 +554,7 @@ export class QuinPrinterDriver extends Driver {
       // 3) Unknown prefix — not an Aimotech-family device.
       return {
         ok: false,
+        detected,
         reason:
           `The device returned serial number "${snAscii}", which doesn't ` +
           `match any known Aimotech printer model. ` +

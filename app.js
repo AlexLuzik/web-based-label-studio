@@ -36,10 +36,63 @@ import { createDriver } from './printer/index.js';
 //  never references P780BT-specific bytes.
 // ---------------------------------------------------------------------
 
-const driver = createDriver('p780bt');
-// Stash the active driver on the debug namespace so it's reachable
+// ---------- Driver selection (auto-detect + persistence) ----------
+//
+// The user's printer model determines which driver subclass we
+// instantiate (DPI, pager bytes, etc. differ). We can't swap drivers
+// in the middle of a session without rebuilding designer state, so
+// the UX is: probe on first connect, persist the chosen driver id to
+// localStorage, and on subsequent sessions skip the probe by loading
+// the saved id at module init.
+//
+// Source of truth, in priority order:
+//   1. `?driver=<id>` URL query — override for power users who want
+//      to force a specific driver (also how the auto-reload below
+//      redirects the user after a model is detected).
+//   2. `localStorage.btprinter.driverId` — remembered from a prior
+//      successful connect.
+//   3. 'p780bt' — default. Anyone without saved state starts here.
+//
+// If identity check then fails because the printer is a DIFFERENT
+// known model, the identity-failed listener below saves the correct
+// driver id and reloads. The user sees one "Switching driver…" toast
+// and their next connect click works straight away. Reloads happen
+// at most once per printer-swap.
+
+const DRIVER_ID_STORAGE_KEY = 'btprinter.driverId';
+
+function pickDriverId() {
+  try {
+    const urlId = new URLSearchParams(location.search).get('driver');
+    if (urlId) return urlId;
+  } catch {}
+  try {
+    const savedId = localStorage.getItem(DRIVER_ID_STORAGE_KEY);
+    if (savedId) return savedId;
+  } catch {}
+  return 'p780bt';
+}
+
+let currentDriverId = pickDriverId();
+let driver;
+try {
+  driver = createDriver(currentDriverId);
+} catch (e) {
+  // Saved / URL driver id is unknown (e.g. user edited localStorage,
+  // or the id was removed). Fall back to the default and drop the
+  // stale persisted value so we don't loop.
+  console.warn(`[BTPrinter] ${e.message}. Falling back to p780bt.`);
+  try { localStorage.removeItem(DRIVER_ID_STORAGE_KEY); } catch {}
+  currentDriverId = 'p780bt';
+  driver = createDriver(currentDriverId);
+}
+
+// Stash the active driver + id on the debug namespace so it's reachable
 // from DevTools (`BTPrinter.driver.readAll()` etc).
-if (window.BTPrinter) window.BTPrinter.driver = driver;
+if (window.BTPrinter) {
+  window.BTPrinter.driver = driver;
+  window.BTPrinter.driverId = currentDriverId;
+}
 
 // ---------- Utilities used by UI logging ----------
 
@@ -287,6 +340,11 @@ driver.addEventListener('connected', (ev) => {
     strip.setAttribute('aria-busy', 'true');
   }
   logLine('info', 'Connected.');
+  // Remember the driver id that successfully identified a printer —
+  // next session will pick this up from localStorage via
+  // pickDriverId() and skip the identity-failed → reload dance even
+  // if the original URL query had it set explicitly.
+  try { localStorage.setItem(DRIVER_ID_STORAGE_KEY, currentDriverId); } catch {}
   // Auto-refresh key printer data so the status strip and cards
   // populate immediately instead of showing "—" until READ ALL.
   driver.readAll().catch(() => {});
@@ -318,20 +376,44 @@ driver.addEventListener('error', (ev) => {
   setStatus('error', 'error');
 });
 
-// Wrong-endpoint modal. Fires when the identity check rejects the
-// port. The driver's reason string carries the reason — usually one
-// of three: (a) the user picked a generic Standard-Serial / BT-SPP
-// node instead of the printer's dedicated entry; (b) the connected
-// device is a DIFFERENT Aimotech printer model we don't have a
-// driver for; (c) it answered but the serial format is unknown.
+// Identity-failed handler. Three scenarios, in order of preference:
 //
-// We surface the reason both in the Advanced log (for power users)
-// AND inline in the modal via `#wrongEndpointReason`, so the user
-// can read "Detected D480BT — driver not implemented" without
-// opening the log.
+//   1. The driver recognised the SN as a KNOWN model, and we have a
+//      driver for that model that's NOT the currently-active one.
+//      Save the correct driver id to localStorage and auto-reload
+//      the page — on the next load, `pickDriverId()` will pick the
+//      saved id and the connection will succeed straight away.
+//      User sees a single "Detected X, switching driver…" toast
+//      and a ~1s reload. One-time cost per printer-swap.
+//
+//   2. The SN was recognised but we haven't written a driver for it
+//      (detected.vendorModel present, detected.driverId null), OR
+//      the SN was unrecognised entirely. Surface the reason both in
+//      the Advanced log AND inline in the wrong-endpoint modal so
+//      the user sees the specific model name / error.
+//
+//   3. Something threw inside identity check (no `detected` field).
+//      Fall through to the modal with the raw reason.
 driver.addEventListener('identity-failed', (ev) => {
-  const reason = ev.detail.reason || 'Identity check failed.';
+  const reason   = ev.detail.reason   || 'Identity check failed.';
+  const detected = ev.detail.detected || null;
   logLine('error', 'Identity check failed: ' + reason);
+
+  // Path 1 — auto-swap driver via reload.
+  if (detected && detected.driverId && detected.driverId !== currentDriverId) {
+    try {
+      localStorage.setItem(DRIVER_ID_STORAGE_KEY, detected.driverId);
+    } catch {}
+    const model = detected.vendorModel || detected.driverId;
+    logLine('info', `Saving driver choice "${detected.driverId}" for ${model}, reloading…`);
+    if (typeof window.showToast === 'function') {
+      window.showToast(`Detected ${model} — switching driver…`, 'info');
+    }
+    setTimeout(() => { try { location.reload(); } catch {} }, 1200);
+    return;
+  }
+
+  // Paths 2 + 3 — show the modal with the reason.
   try {
     const reasonEl = document.getElementById('wrongEndpointReason');
     if (reasonEl) reasonEl.textContent = reason;

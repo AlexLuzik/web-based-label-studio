@@ -89,7 +89,12 @@ export class Driver extends EventTarget {
 
     if (verdict !== true) {
       const reason = (verdict && verdict.reason) || 'Device did not pass identity check.';
-      this._emit('identity-failed', { reason });
+      // `detected` carries the SN-registry resolution when the driver
+      // was able to produce one (right protocol, wrong model). The UI
+      // uses it to auto-swap drivers via localStorage + reload, so the
+      // user doesn't have to figure out the driver id manually.
+      const detected = verdict && verdict.detected;
+      this._emit('identity-failed', detected ? { reason, detected } : { reason });
       try { await this.link.disconnect(); } catch {}
       throw new Error(reason);
     }
