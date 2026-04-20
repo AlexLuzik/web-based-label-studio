@@ -41,6 +41,15 @@
 html, body { height: 100%; }
 html { scrollbar-gutter: stable; }     /* no layout shift when a modal opens */
 
+/* Bootstrap's ScrollBarHelper (used by modal + offcanvas) zeroes the
+ * scrollbar and adds an inline `padding-right: <scrollbar>px` to <body>
+ * to compensate. Since `scrollbar-gutter: stable` on <html> already
+ * reserves that space globally, BS's compensation stacks on top of
+ * ours and pushes the whole layout leftward every time the Advanced
+ * offcanvas / a modal opens. `!important` wins over inline styles
+ * without !important, so this override neutralises the shift. */
+body { padding-right: 0 !important; }
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
