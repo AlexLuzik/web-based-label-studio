@@ -29,7 +29,7 @@ Oleksandr Luzin** in this repository:
 
 - `app.js`, `index.html`, `styles.css` — the Web Serial client for
   the P780BT printer.
-- `P780BT_protocol.md` — the original prose, tables and structure of
+- `protocol.md` — the original prose, tables and structure of
   the protocol reference document.
 - `LICENSE.md`, `README.md`.
 

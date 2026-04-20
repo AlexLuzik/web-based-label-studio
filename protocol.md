@@ -1,8 +1,12 @@
-# P780BT — Protocol & Feature Reference
+# Bluetooth Thermal Label Printer — Protocol Reference
 
-> Complete technical documentation for the **EazeID P780BT** Bluetooth
-> thermal label printer — a hardware device by EazeID that speaks the
-> Aimotech-family printer protocol.
+> Technical documentation for the wire protocol spoken by a family of
+> Bluetooth thermal label printers built around the same SDK. The
+> protocol is identical across the family; models differ only in a
+> handful of parameters (DPI, end-of-job bytes, tape width, dither
+> threshold). The reference implementation was verified on a
+> **P780BT** and extended to ~24 sibling models via parameter shims —
+> see [§2 Supported models](#2-supported-models) for the full list.
 
 **Author:** [Oleksandr Luzin](https://luzin.cc) &middot; **Status:** living document
 
@@ -10,82 +14,118 @@
 [MIT](https://opensource.org/license/mit/). The *protocol itself* is a
 factual interface and is not copyrightable (see *Google v. Oracle*,
 593 U.S. \_\_\_ (2021)) — documenting it here does not grant or claim
-any rights over it. The vendor SDK sources, APK, firmware and
-trademarks (*EazeID*, *P780BT*, *Aimotech*, *PrintMaster*) belong to
-their respective owners; see the
+any rights over it. The vendor SDK sources, APK, firmware and all
+brand names / trademarks belong to their respective owners; see the
 [Legal & fair-use notice](#legal--fair-use-notice) at the bottom for
 the U.S. legal basis (DMCA § 1201(f) interoperability exemption, fair
 use under 17 U.S.C. § 107, nominative trademark fair use).
 
-### Name disambiguation
-
-| Name | What it refers to |
-|---|---|
-| **EazeID** | Hardware brand — the label printer you buy in the box |
-| **P780BT** | The specific hardware model under that brand |
-| **Aimotech** | Firmware / SDK vendor (`com.project.aimotech.*` Java packages) — provides the protocol used by P780BT and many sibling devices |
-| **PrintMaster** | The Android companion app that ships with EazeID / other Aimotech-family printers; the name used on Google Play |
-
-Reverse-engineered from the Android app PrintMaster v5.18.0.12 (package
-`com.project.aimotech.printmaster`, decompiled with jadx) and
-cross-checked against a real **btsnoop** HCI capture plus live traffic
-from an independent Web Serial client. Everything in this file is a
-description of observable facts (bytes on the wire, values returned) —
-no vendor source code has been copied into this document.
+Reverse-engineered from the vendor Android companion app
+(decompiled with jadx) cross-checked against a real **btsnoop** HCI
+capture plus live traffic from an independent Web Serial client.
+Everything in this file is a description of observable facts (bytes
+on the wire, values returned) — no vendor source code has been
+copied into this document.
 
 Legend used throughout this file:
 
 | Marker | Meaning |
 |:------:|---------|
 | ✅ | Verified working on P780BT firmware `0.1.9` (tested on hardware) |
-| ⚠️ | Present in the vendor SDK but unverified on P780BT — may or may not answer |
-| ❌ | Confirmed **silent** on P780BT firmware `0.1.9` — command accepted, no response |
+| ⚠️ | Present in the vendor SDK but unverified on the author's hardware — may or may not answer on a given model |
+| ❌ | Confirmed **silent** on P780BT firmware `0.1.9` — command accepted, no response. Behaviour on other models unknown. |
 
 ---
 
 ## Table of contents
 
-1. [Hardware characteristics](#1-hardware-characteristics)
-2. [Bluetooth connection setup](#2-bluetooth-connection-setup)
-3. [Application protocol format](#3-application-protocol-format)
-4. [GET commands (read)](#4-get-commands-read)
-5. [SET commands (write)](#5-set-commands-write)
-6. [Response tags](#6-response-tags)
-7. [Image printing (raster pipeline)](#7-image-printing-raster-pipeline)
-8. [Firmware update (OTA)](#8-firmware-update-ota)
-9. [Public SDK API surface](#9-public-sdk-api-surface)
-10. [P780BT specifics vs QuinPrinter base](#10-p780bt-specifics-vs-quinprinter-base)
-11. [Observed values from test hardware](#11-observed-values-from-test-hardware)
-12. [Wireshark filters](#12-wireshark-filters)
-13. [Reference files](#13-reference-files)
-14. [Aimotech model catalog](#14-aimotech-model-catalog)
+1. [Hardware characteristics (family)](#1-hardware-characteristics-family)
+2. [Supported models](#2-supported-models)
+3. [Bluetooth connection setup](#3-bluetooth-connection-setup)
+4. [Application protocol format](#4-application-protocol-format)
+5. [GET commands (read)](#5-get-commands-read)
+6. [SET commands (write)](#6-set-commands-write)
+7. [Response tags](#7-response-tags)
+8. [Image printing (raster pipeline)](#8-image-printing-raster-pipeline)
+9. [Firmware update (OTA)](#9-firmware-update-ota)
+10. [Public SDK API surface](#10-public-sdk-api-surface)
+11. [Per-model parameters](#11-per-model-parameters)
+12. [Observed values from test hardware (P780BT)](#12-observed-values-from-test-hardware-p780bt)
+13. [Wireshark filters](#13-wireshark-filters)
+14. [How this document was produced](#14-how-this-document-was-produced)
+15. [Broader model catalog](#15-broader-model-catalog)
 
 ---
 
-## 1. Hardware characteristics
+## 1. Hardware characteristics (family)
+
+The properties below are shared across every model in the family.
+Per-model numbers (DPI, max print width, dither threshold, bitmap
+scale factor, end-of-job bytes) live in
+[§11 Per-model parameters](#11-per-model-parameters).
 
 | Property | Value |
 |---|---|
-| Model | P780BT |
-| Hardware brand | EazeID |
-| Firmware / SDK vendor | Aimotech |
-| Companion Android app | PrintMaster |
 | BT chip | JieLi AC69xx (AC6951 / AC6961 — "Jerry" family) |
 | BT profile | Classic BT + BLE dual-mode |
-| Default BT name | `P780BT` |
+| Default BT name | model-specific (e.g. `P780BT`, `D480BT`) |
 | BT SDP service | **JL_SPP** (JieLi Serial Port Profile) |
 | Data transport | SPP / RFCOMM, Channel 1 (DLCI `0x02`) |
 | SPP UUID | standard `00001101-0000-1000-8000-00805F9B34FB` |
 | Print type | thermal, 1 bpp raster |
-| Max print width | 48 bytes = 384 dots |
-| Effective DPI | **180** (per `PrinterTypeChecker.java`) |
-| Bitmap scale factor | `0.8866995` (= 180 / 203) |
-| Binarization threshold | 200 |
-| RFID | supported (consumables tracking) |
+| Effective DPI | 180 / 203 / 300 (model-specific) |
+| RFID | supported on cartridge-based models (consumables tracking) |
 
 ---
 
-## 2. Bluetooth connection setup
+## 2. Supported models
+
+This project ships drivers for **24 models**, all speaking the same
+wire protocol documented in §§4–10 below. Differences are captured
+entirely by a handful of parameters (DPI, dither threshold, bitmap
+scale factor, end-of-job bytes, max tape width) — see [§11 Per-model
+parameters](#11-per-model-parameters) for the full table.
+
+| Family | Models |
+|---|---|
+| **P-series** | P780BT, P24, P580, P1000, AMP310, P15, P3100D, P3100DJ, P3200, P3200D, LT12 |
+| **D-series (BT)** | D480BT, D480BT PRO, D680BT, D1600, D1600D |
+| **D-series (portable)** | D30, D30S, D50 |
+| **Q-series** | Q30 |
+| **Misc** | A30, LM1600, M950, M960 |
+
+**P780BT** is the reference model — the author owns one, this is the
+hardware every behavioural observation in this document was verified
+against. Other drivers are derived by transplanting the parameter
+set from the vendor SDK; they are structurally correct but have not
+been field-tested.
+
+Selection is automatic on connect: the app reads the serial number
+(`1F 11 09` → `1A 08 <15 ASCII>`), looks up the first 4 characters in
+its SN-prefix registry, and loads the matching driver. See
+[§11 Per-model parameters](#11-per-model-parameters) for the
+prefix → model table.
+
+### Known models NOT covered here
+
+Some models in the vendor catalog use protocol extensions that this
+project has not ported yet:
+
+- **Compressed-raster variants** — `E6000`, `E8000`, `E50`, `E50 PRO`,
+  `E9000`, `E93` and the `*C` M-family siblings (`M110C`, `M120C`,
+  `M200C`, `M220C`). They send the image with an extra `img2NvCompress`
+  / `img2Nv4Native` encoding layer not documented here.
+- **Text-command protocol** — `B246D` uses an entirely different
+  ASCII-based `SSS<CMD>\r\n` wire format. Requires a separate driver
+  base class.
+- **PRO / 300-DPI variants** — `P780BT PRO`, `D480BT PRO`, `E50 PRO`
+  share an SN prefix with their non-Pro siblings, so this project's
+  SN-based auto-detect currently resolves them to the base driver
+  (wrong DPI). Support would require a manual driver-selector UI.
+
+---
+
+## 3. Bluetooth connection setup
 
 Handshake sequence observed in the btsnoop capture:
 
@@ -111,7 +151,7 @@ On connect the reference SDK auto-fires a status sweep:
 
 ---
 
-## 3. Application protocol format
+## 4. Application protocol format
 
 Everything runs on top of plain SPP — no framing layer of its own. Two
 message shapes:
@@ -151,7 +191,7 @@ the request order, but asynchronous status notifications are allowed
 
 ---
 
-## 4. GET commands (read)
+## 5. GET commands (read)
 
 Source of truth: `InsGet.java`. All requests have the form `1F 11 <cmd>`.
 
@@ -208,7 +248,7 @@ Source of truth: `InsGet.java`. All requests have the form `1F 11 <cmd>`.
 
 ---
 
-## 5. SET commands (write)
+## 6. SET commands (write)
 
 Source of truth: `InsSet.java`. These trigger side-effects (change
 settings, send data, start a print); most do not answer.
@@ -274,7 +314,7 @@ settings, send data, start a print); most do not answer.
 
 ---
 
-## 6. Response tags
+## 7. Response tags
 
 Response format: `1A <tag> <payload>`. The tag defines payload
 semantics. Parser lives in `QuinPrinter.InstructionProcessor`.
@@ -347,7 +387,7 @@ semantics. Parser lives in `QuinPrinter.InstructionProcessor`.
 
 ---
 
-## 7. Image printing (raster pipeline)
+## 8. Image printing (raster pipeline)
 
 The P780BT does **not** use ESC/POS text/barcode commands — all content
 is rasterized by the client and sent as a 1 bpp bitmap.
@@ -398,7 +438,7 @@ PRINT_MULTI (1F 11 21) + count + PRINT_IMAGE + raster
 
 ---
 
-## 8. Firmware update (OTA)
+## 9. Firmware update (OTA)
 
 Two CRC variants depending on the BT chip family:
 
@@ -417,7 +457,7 @@ Sequence:
 
 ---
 
-## 9. Public SDK API surface
+## 10. Public SDK API surface
 
 Inheritance chain: `Printer` → `QuinPrinter` → `P780BTPrinter`.
 
@@ -547,23 +587,100 @@ Callback interfaces:
 
 ---
 
-## 10. P780BT specifics vs QuinPrinter base
+## 11. Per-model parameters
 
-| Aspect | Base `QuinPrinter` | `P780BTPrinter` |
-|---|---|---|
-| `getBitmapScaleSize()` | `1.0` | **`0.8867`** |
-| `getThreshold()` | `128` (default) | **`200`** |
-| Pad raster to 48-byte width | yes | **no** |
-| Raster command | `PRINT_IMAGE` (`1D 76 30 00`) | **`SET_PRINT_IMAGE` (`1B 4E 1F`)** |
-| Multi-copy print | single command with count | **loop**: INIT → (SET_IMG + PAUSE) × N → PRINT_PAGER |
-| Copy separator | — | **`PRINT_PAUSE` (`1F 11 3C`)** |
-| Job finalization | — | **`PRINT_PAGER` (`1B 64 00`)** |
-| `LABEL_MIN_LENGTH` | — | **25 mm** |
-| Icon resource | — | `R.mipmap.printer_icon_p780bt` |
+The table below is the complete parameter set for every driver
+registered in this project. All other columns of the wire protocol
+(request prefix, response framing, response tag layouts, multi-copy
+loop with `PRINT_PAUSE` / `PRINT_PAGER`, etc.) are identical across
+models — see §§4–10.
+
+**Columns:**
+- **DPI** — native print-head resolution. Drives the canvas renderer.
+- **Tape mm** — maximum printable width along the tape-width axis.
+- **End-of-job** — bytes sent after the last raster in a print job
+  (closes the page in firmware). Model-specific; the most common
+  difference between otherwise-identical models.
+- **Scale** — `bitmap_scale_size` applied before rasterization
+  (`0.8867` ≈ 180/203 — used when a design authored at 203 DPI is
+  printed on a 180-DPI head).
+- **Dither** — binarization threshold for the 1-bpp conversion
+  (0..255; midpoint 128). `200` biases darker.
+- **SN prefix(es)** — the first 4 ASCII characters of the serial
+  number that resolve (via `printer/sn-registry.js`) to this
+  driver. `— (force)` = this project has the driver but the SN
+  registry doesn't auto-select it (either no prefix is uniquely
+  known, or the prefix overlaps a sibling); use the
+  `?driver=<id>` URL override or set `localStorage.btprinter.driverId`
+  to force it.
+
+### P-series
+
+| Driver id | Model | DPI | Tape mm | End-of-job | Scale | Dither | SN prefix(es) |
+|---|---|---:|---:|---|---:|---:|---|
+| `p780bt`  | P780BT   | 180 | 48 | `1B 64 00` | 0.8867 | 128 ✅ | `Q217` |
+| `p24`     | P24      | 180 | 48 | `1B 64 00` | 0.8867 | 128 | `Q373` |
+| `p580`    | P580     | 180 | 48 | `1B 64 00` | 0.8867 | 128 | `Q393` |
+| `p1000`   | P1000    | 180 | 48 | `1B 64 02` | 0.8867 | 200 | `Q004` `Q030` `Q031` `Q035` `Q079` |
+| `amp310`  | AMP310   | 180 | 48 | `1B 64 02` | 0.8867 | 200 | — (force) |
+| `p15`     | P15      | 203 | 12 | `1B 64 0C` | 1.0    | 128 | `Q295` |
+| `p3100d`  | P3100D   | 180 | 48 | `1B 64 02` | 0.8867 | 200 | `Q051` `Q133` |
+| `p3100dj` | P3100DJ  | 180 | 48 | `1B 64 01` | 0.8867 | 200 | — (force) |
+| `p3200`   | P3200    | 203 | 48 | `1B 64 0C` | 1.0    | 128 | `Q173` `Q174` |
+| `p3200d`  | P3200D   | 203 | 48 | `1B 64 0C` | 1.0    | 128 | — (via P3200) |
+| `lt12`    | LT12     | 180 | 48 | `1B 64 02` | 0.8867 | 200 | `Q309` |
+
+### D-series (BT cartridge-based)
+
+| Driver id | Model | DPI | Tape mm | End-of-job | Scale | Dither | SN prefix(es) |
+|---|---|---:|---:|---|---:|---:|---|
+| `d480bt`    | D480BT     | 180 | 48 | `1B 64 1F` | 0.8867 | 200 | `Q215` |
+| `d480btpro` | D480BT PRO | 180 | 48 | `1B 64 1F` | 0.8867 | 200 | — (force) |
+| `d680bt`    | D680BT     | 180 | 48 | `1B 64 21` | 0.8867 | 200 | `Q216` |
+| `d1600`     | D1600      | 203 | 48 | `1B 40`    | 1.0    | 128 | `Q175` `Q176` |
+| `d1600d`    | D1600D     | 203 | 48 | `1B 40`    | 1.0    | 128 | — (via D1600) |
+
+### D-series (portable, narrow tape)
+
+| Driver id | Model | DPI | Tape mm | End-of-job | Scale | Dither | SN prefix(es) |
+|---|---|---:|---:|---|---:|---:|---|
+| `d30`  | D30  | 203 | 12 | `1B 64 17` | 1.0    | 128 | `Q018` `Q040` `Q046` `Q049` `Q050` `Q069` `Q092` `Q093` `Q107` `Q109` `Q110` `Q138` `Q159` `Q172` `Q189` `Q223` |
+| `d30s` | D30S | 203 | 12 | `1B 64 17` | 1.0    | 128 | `Q036` `Q048` `Q097` `Q111` `Q125` `Q149` `Q150` `Q183` |
+| `d50`  | D50  | 180 | 12 | `1B 64 11` | 0.8867 | 200 | `Q083` |
+
+### Q-series
+
+| Driver id | Model | DPI | Tape mm | End-of-job | Scale | Dither | SN prefix(es) |
+|---|---|---:|---:|---|---:|---:|---|
+| `q30` | Q30 | 203 | 12 | `1B 64 17` | 1.0 | 128 | `Q082` `Q130` `Q169` |
+
+### Misc
+
+| Driver id | Model | DPI | Tape mm | End-of-job | Scale | Dither | SN prefix(es) |
+|---|---|---:|---:|---|---:|---:|---|
+| `a30`    | A30    | 203 | 12 | `1B 64 0B` | 1.0 | 128 | `Q294` |
+| `lm1600` | LM1600 | 203 | 48 | `1B 64 02` | 1.0 | 128 | `Q310` |
+| `m950`   | M950   | 203 | 48 | `1B 64 07` | 1.0 | 128 | `Q311` |
+| `m960`   | M960   | 203 | 48 | `1B 64 0D` | 1.0 | 128 | `Q186` `Q187` |
+
+### Additional P780BT tuning notes
+
+The P780BT driver has two extra per-hardware calibration values —
+`printFeedShiftPx = 4` and `printVerticalShiftPx = 2` — field-tuned
+by the author against real printed output. They nudge the packed
+raster by a few pixels along the feed and tape-width axes to
+compensate for small mechanical offsets. All other drivers default
+to 0/0; if your model prints slightly off-centre, these are the
+first knobs to dial in.
+
+The P780BT implementation also uses `ditherThreshold: 128` (the
+mathematical midpoint) rather than the reference `200` — 128 produces
+visibly cleaner output on the author's sample set. Other drivers
+inherit the reference value.
 
 ---
 
-## 11. Observed values from test hardware
+## 12. Observed values from test hardware (P780BT)
 
 Captured on a specific P780BT running firmware `0.1.9`:
 
@@ -581,7 +698,7 @@ Captured on a specific P780BT running firmware `0.1.9`:
 
 ---
 
-## 12. Wireshark filters
+## 13. Wireshark filters
 
 Handy display filters for `btsnoop_hci.log`:
 
@@ -595,7 +712,7 @@ btspp && data.data matches "^1f11"    # requests
 
 ---
 
-## 13. How this document was produced
+## 14. How this document was produced
 
 This spec was reconstructed from two data sources, consulted privately
 during reverse-engineering and **not redistributed** as part of this
@@ -654,7 +771,7 @@ model-specific and which are shared.
 
 ---
 
-## 14. Aimotech model catalog
+## 15. Broader model catalog
 
 Printer classes found in the same SDK. Useful as a
 protocol-compatibility reference when porting — models in the same

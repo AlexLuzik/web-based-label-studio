@@ -1,8 +1,10 @@
-# Web-based printing app for EazeID P780BT
+# Web-based Label Studio
 
-A single-page, browser-based controller for the **EazeID P780BT**
-Bluetooth thermal label printer — design labels, manage a print queue,
-save templates, and configure the device without installing anything.
+A single-page, browser-based controller for a family of Bluetooth
+thermal label printers — design labels, manage a print queue, save
+templates, and configure the device without installing anything.
+24 models supported; see [`protocol.md`](./protocol.md) §11 for the
+full list.
 
 Runs directly in **Chrome** or **Edge** on desktop via the
 [Web Serial API](https://wicg.github.io/serial/). No build step, no
@@ -11,7 +13,7 @@ static HTTP server (the Chromium module loader needs `http(s)://`).
 
 **Author:** [Oleksandr Luzin](https://luzin.cc) &middot;
 **License:** [MIT](./LICENSE.md) &middot;
-**Protocol reference:** [P780BT_protocol.md](./P780BT_protocol.md) &middot;
+**Protocol reference:** [protocol.md](./protocol.md) &middot;
 **Live demo:** <https://alexluzik.github.io/p780bt-web/>
 <sub>(replace with your own GitHub user when forking)</sub>
 
@@ -57,7 +59,7 @@ The reverse-engineering was done in two stages:
    It parsed the HCI dumps, matched byte patterns against the
    decompiled `com.project.aimotech.*` Java sources, built up the
    request / response tables that now live in
-   [`P780BT_protocol.md`](./P780BT_protocol.md), and turned them into
+   [`protocol.md`](./protocol.md), and turned them into
    the running web client now shipped at the repository root.
 
 The rest of the repository — architecture, UI, print pipeline, raster
@@ -155,9 +157,11 @@ Cloudflare Pages, Vercel, plain Nginx, `python -m http.server`).
 ├── printer/                  ← pluggable printer driver layer
 │   ├── transport.js          ← generic Web Serial + framing parser
 │   ├── driver-base.js        ← abstract Driver (EventTarget + waitForTag)
-│   ├── p780bt.js             ← concrete P780BT driver
+│   ├── base.js               ← concrete family base + shared constants
+│   ├── models.js             ← per-model parameter shims (24 drivers)
+│   ├── sn-registry.js        ← SN-prefix → model lookup for auto-detect
 │   └── index.js              ← createDriver() factory + registry
-└── P780BT_protocol.md        ← full reverse-engineered protocol spec
+└── protocol.md               ← full reverse-engineered protocol spec
 ```
 
 ### About `printer/`
@@ -170,17 +174,21 @@ method calls (`driver.connect()`, `driver.readAll()`,
 `driver.rasterize(canvas)`, `driver.sendRaster(bytes)`,
 `driver.beginJob()`/`endJob()`).
 
-Adding support for another Bluetooth thermal printer is a matter of:
+On connect, the app reads the printer's serial number, looks up the
+first 4 characters in `sn-registry.js`, and auto-selects the matching
+driver. If the connected printer's model doesn't match the currently
+loaded driver, the app saves the correct driver id to `localStorage`
+and reloads — so the user sees a single "switching driver…" reload
+on the first connect to a new model, then direct connects forever
+after.
 
-1. Writing a new file like `printer/other-model.js` that exports a
-   class extending `Driver` (see `driver-base.js` for the required
-   overrides — `_createParser`, `_decodeFrame`, `_verifyIdentity`,
-   `rasterize`, `sendRaster`, `beginJob`, `endJob`, and the
-   `model` / `dpi` / `commands` / `settings` / `actions` metadata).
-2. One line in `printer/index.js`:
-   `registerDriver('other-model', OtherModelDriver);`.
-3. Creating it instead of `'p780bt'` in `app.js` (or adding a model
-   selector UI — the registry already supports it via `listDrivers()`).
+To add support for another Bluetooth thermal printer in the same
+family (same wire protocol), you add a thin subclass to
+`printer/models.js` that overrides only the parameter getters that
+differ (`dpi`, `printPagerBytes`, `bitmapScaleSize`,
+`ditherThreshold`, `maxPrintWidthMm`, and the `vendorModels` array of
+SN-model strings it handles), then register it in `printer/index.js`.
+See `protocol.md` §11 for the full per-model parameter table.
 
 Everything above that — designer, inspector, queue, templates, UI —
 runs unchanged against any driver that honours the contract.
@@ -243,7 +251,7 @@ Loaded from public CDNs — no bundler, no `node_modules`:
 
 Everything this client knows about the wire format — request bytes,
 response tags, payload layouts, firmware quirks — is documented in
-[**P780BT_protocol.md**](./P780BT_protocol.md), including the U.S.
+[**protocol.md**](./protocol.md), including the U.S.
 legal basis for the reverse-engineering that produced it.
 
 ## License & legal
