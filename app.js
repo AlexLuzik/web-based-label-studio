@@ -1387,19 +1387,16 @@ function onCanvasMouseDown(evt) {
   };
 
   dui.canvas.style.cursor = dragMode === 'resize' ? 'nwse-resize' : 'grabbing';
-  // Popover would either lag behind the moving element or jitter
-  // trying to follow it — both look bad. Hide it for the duration
-  // of the drag and bring it back positioned at the final spot on
-  // mouseup. The drag math is viewport-anchored (see dragOffset
-  // above) so no reflow from showing/hiding the popover can corrupt
-  // it, but this just reads cleaner to the user.
-  if (dui.inspector) {
-    dui.inspector.classList.remove('is-showing');
-    dui.inspector.classList.add('d-none');
-  }
+  // Leave the popover visible (whatever element it currently shows)
+  // while the user drags on the canvas. It's anchored to the static
+  // list row, not to the moving canvas element, so it doesn't lag
+  // or jitter — it just stays put. Content updates happen on
+  // mouseup so the user sees a clean "released → popover reflects
+  // new selection" transition rather than flickering mid-drag.
   renderPreview();
-  // Update the left list's selection highlight without rebuilding —
-  // the popover will be re-rendered on mouseup.
+  // Highlight the row for the newly-picked element so the left list
+  // reflects the in-progress selection. Avoids a full list rebuild
+  // (which would detach handlers + reposition the popover).
   syncListRowSelection();
 }
 
