@@ -14,7 +14,7 @@ static HTTP server (the Chromium module loader needs `http(s)://`).
 **Author:** [Oleksandr Luzin](https://luzin.cc) &middot;
 **License:** [MIT](./LICENSE.md) &middot;
 **Protocol reference:** [protocol.md](./protocol.md) &middot;
-**Live demo:** <https://alexluzik.github.io/p780bt-web/>
+**Live demo:** <https://alexluzik.github.io/web-based-label-studio/>
 <sub>(replace with your own GitHub user when forking)</sub>
 
 ---
@@ -136,7 +136,7 @@ with zero configuration files — no workflow, no build step.
 2. Under *Build and deployment → Source*, pick **Deploy from a branch**.
 3. Pick branch **`main`** and folder **`/ (root)`**, then *Save*.
 4. Within a minute the app is live at
-   `https://<your-user>.github.io/p780bt-web/`.
+   `https://<your-user>.github.io/web-based-label-studio/`.
 
 Every subsequent push to `main` re-deploys automatically.
 
