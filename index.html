@@ -260,14 +260,26 @@
                 </div>
               </div>
 
-              <!-- Size row: labeled cartridge diagram on the left + inputs on the right. -->
+              <!-- Size row: compact cartridge diagram on the left, inputs
+                   fanning out across the rest of the row.
+                     * Diagram: `col-md-auto` — takes only its intrinsic
+                       width (capped at 220 px via `.cartridge-diagram`'s
+                       max-width), no wasted column-cell padding on
+                       either side.
+                     * Inputs: `col-md` — equal-share the REMAINING space.
+                       Image style gets a second `col-md` unit so its
+                       long option labels ("Floyd-Steinberg") don't
+                       clip.
+                     * Mobile (<md): diagram full-width on its own row,
+                       the two small selects paired, Image style on
+                       its own row. -->
               <div class="row g-3 align-items-center mb-3">
-                <div class="col-12 col-md-5">
+                <div class="col-12 col-md-auto">
                   <div class="cartridge-diagram" aria-label="Cartridge geometry">
                     <!-- Width and Length share the same markup: a label
                          word, a flexible `.line` with triangle arrowheads
-                         at each end, and a value. The two axes then just
-                         differ by flex direction in CSS — vertical for
+                         at each end, and a value. The two axes differ
+                         only by flex direction in CSS — vertical for
                          Width, horizontal for Length — so they read as
                          the same visual pattern rotated 90°. -->
                     <div class="cd-axis cd-axis-v">
@@ -283,7 +295,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-6 col-md">
                   <label class="form-label small mb-1" for="lblHeightMm">Cartridge width</label>
                   <select id="lblHeightMm" class="form-select form-select-sm">
                     <option value="12">12 mm</option>
@@ -291,14 +303,14 @@
                     <option value="24">24 mm</option>
                   </select>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-6 col-md">
                   <label class="form-label small mb-1" for="lblWidthMm">Length</label>
                   <div class="input-group input-group-sm">
                     <input type="number" id="lblWidthMm" min="10" max="200" step="1" value="40" placeholder="e.g. 40" class="form-control">
                     <span class="input-group-text">mm</span>
                   </div>
                 </div>
-                <div class="col-12 col-md-3">
+                <div class="col-12 col-md-4">
                   <label class="form-label small mb-1" for="lblDither">
                     Image style
                     <i class="bi bi-info-circle ms-1 text-body-secondary" title="How grayscale images are converted to black &amp; white dots"></i>
