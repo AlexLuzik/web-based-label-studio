@@ -10,64 +10,65 @@
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/bwip-js@4.5.0/dist/bwip-js-min.js" defer></script>
 </head>
 <body class="bg-body-tertiary">
 
+<!-- ========== APP CHROME (navbar + status strip) ==========
+     Both the navbar and the status strip need to stay glued to the top
+     of the viewport as the user scrolls. Rather than give each its own
+     `position: sticky` with a hand-tuned `top` offset — which breaks
+     whenever the navbar's actual height doesn't equal the offset — they
+     share a single `.app-chrome` sticky-top wrapper, so they always
+     travel together with zero gap. -->
+<div class="app-chrome sticky-top">
+
 <!-- ========== NAVBAR ==========
-     Uses `navbar-expand-lg` so tablets in portrait (<992px) collapse into a
-     burger menu. The status badge stays outside the collapse so it's always
-     visible as a state indicator. The burger toggler is `.connected-only` so
-     nothing to toggle shows up pre-connect. -->
-<nav class="navbar navbar-expand-lg bg-body-secondary border-bottom sticky-top">
-  <div class="container-xxl gap-2">
-    <span class="navbar-brand d-flex align-items-center gap-2 me-2">
-      <i class="bi bi-printer-fill text-primary"></i>
-      <span>Web-based printing app</span>
-    </span>
+     Frosted-glass bar with a gradient brand mark, a pill-shaped tab group
+     in the middle (Bootstrap pills wrapped in `.nav-pill-group` to get
+     the segmented look), and the right cluster (status badge + shortcuts /
+     disconnect / gear + burger on mobile). Tablets in portrait collapse
+     to the burger; the collapse panel is `.connected-only` so nothing
+     flashes pre-connect. -->
+<nav class="app-navbar navbar navbar-expand-lg px-3 px-lg-4 py-2">
+  <div class="container-xxl d-flex align-items-center gap-3" style="min-height: 42px;">
 
-    <!-- Collapsible panel (pills only, middle of desktop row).
-         On mobile drops below as stacked vertical pills. On lg+ it sits
-         between the brand and the always-visible right cluster.
-         `.connected-only` keeps it hidden pre-connect. `order-lg-1` keeps
-         it in the middle on desktop when the right cluster below is after
-         it in source order. -->
-    <div class="collapse navbar-collapse connected-only d-none order-lg-1" id="navbarMain">
+    <a href="#" class="app-brand">
+      <span class="app-brand-mark"><i class="bi bi-printer-fill"></i></span>
+      <span class="d-flex flex-column lh-1">
+        <span>P780BT</span>
+        <span class="app-brand-sub">Label Studio</span>
+      </span>
+    </a>
 
-      <!-- Primary view pills — `flex-lg-row` keeps them horizontal on desktop;
-           default flex-column stacks them as full-width tap targets on mobile. -->
-      <ul class="nav nav-pills view-nav gap-1 flex-column flex-lg-row mb-2 mb-lg-0" role="tablist" id="viewNav">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link active w-100" id="nav-design-btn" data-bs-toggle="pill" data-bs-target="#view-design" type="button" role="tab">
-            <i class="bi bi-vector-pen me-1"></i> Design &amp; Print
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link w-100" id="nav-templates-btn" data-bs-toggle="pill" data-bs-target="#view-templates" type="button" role="tab">
-            <i class="bi bi-collection me-1"></i> Templates
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link w-100" id="nav-printer-btn" data-bs-toggle="pill" data-bs-target="#view-printer" type="button" role="tab">
-            <i class="bi bi-printer me-1"></i> Printer
-          </button>
-        </li>
-      </ul>
+    <!-- Collapsible panel (pills only, middle of desktop row). -->
+    <div class="collapse navbar-collapse connected-only d-none order-lg-1 mx-auto" id="navbarMain">
 
-      <!-- Mobile-only action cluster: Disconnect + Advanced stacked inside
-           the collapse panel below the pills. Hidden on lg+ where the
-           equivalents live in the always-visible right cluster below.
-           Note: Keyboard shortcuts help is desktop-only — a popover tied
-           to the `#btnShortcutsHelp` button in the right cluster. Touch
-           devices have no keyboard to shortcut, so it's omitted here. -->
+      <div class="nav-pill-group mx-auto" role="tablist" id="viewNav">
+        <button class="nav-link active" id="nav-design-btn" data-bs-toggle="pill" data-bs-target="#view-design" type="button" role="tab">
+          <i class="bi bi-vector-pen"></i> Design &amp; Print
+        </button>
+        <button class="nav-link" id="nav-templates-btn" data-bs-toggle="pill" data-bs-target="#view-templates" type="button" role="tab">
+          <i class="bi bi-collection"></i> Templates
+        </button>
+        <button class="nav-link" id="nav-printer-btn" data-bs-toggle="pill" data-bs-target="#view-printer" type="button" role="tab">
+          <i class="bi bi-printer"></i> Printer
+        </button>
+      </div>
+
+      <!-- Mobile-only action cluster stacked inside the burger. On lg+ the
+           equivalents live in the always-visible right cluster below. -->
       <div class="navbar-actions d-lg-none d-flex flex-column align-items-stretch gap-2 mt-2 pt-2 border-top border-secondary-subtle">
         <button type="button" class="btn btn-outline-danger" id="btnDisconnectMobile" title="Disconnect from printer">
           <i class="bi bi-bluetooth-off me-1"></i>Disconnect
         </button>
         <button type="button"
-                class="btn btn-outline-secondary"
+                class="btn btn-ghost"
                 data-bs-toggle="offcanvas"
                 data-bs-target="#offcanvasAdvanced"
                 aria-label="Advanced">
@@ -76,25 +77,28 @@
       </div>
     </div>
 
-    <!-- Right-side cluster (always visible on top row): status badge +
-         (on desktop) inline help/Disconnect/gear, + (on mobile) burger.
-         `ms-auto order-lg-2` puts it at the far right of the top row. -->
+    <!-- Right cluster: status pill + (desktop) help / Disconnect / gear + (mobile) burger. -->
     <div class="d-flex align-items-center gap-2 ms-auto order-lg-2">
-      <span id="statusBadge" class="badge text-bg-secondary">
-        <i class="bi bi-circle-fill me-1"></i><span id="statusText">disconnected</span>
+      <!-- Status pill. JS mutates the class list (text-bg-secondary/warning/
+           success/danger) to reflect state; the dot is re-styled through
+           its sibling .status-dot class for a subtler visual. Label lives
+           in #statusText for JS text swaps. -->
+      <span id="statusBadge" class="badge rounded-pill d-inline-flex align-items-center gap-2 px-3 py-2 text-bg-secondary" style="font-weight: 500;">
+        <i class="bi bi-circle-fill me-1" style="font-size: .6rem;"></i>
+        <span id="statusText">disconnected</span>
       </span>
 
       <!-- Desktop-only inline action buttons (hidden on mobile — equivalents
            live inside the collapse panel). `.connected-only` so they stay
            hidden pre-connect. -->
-      <button type="button" class="btn btn-outline-secondary btn-sm connected-only d-none navbar-desktop-only" id="btnShortcutsHelp" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
-        <i class="bi bi-question-circle"></i>
+      <button type="button" class="btn btn-ghost btn-sm connected-only d-none navbar-desktop-only" id="btnShortcutsHelp" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
+        <i class="bi bi-keyboard"></i>
       </button>
-      <button id="btnDisconnect" type="button" class="btn btn-outline-danger connected-only d-none navbar-desktop-only" title="Disconnect from printer">
-        <i class="bi bi-bluetooth-off me-1"></i>Disconnect
+      <button id="btnDisconnect" type="button" class="btn btn-outline-danger btn-sm connected-only d-none navbar-desktop-only" title="Disconnect from printer">
+        <i class="bi bi-bluetooth-off me-1"></i><span class="d-none d-md-inline">Disconnect</span>
       </button>
       <button type="button"
-              class="btn btn-outline-secondary connected-only d-none navbar-desktop-only"
+              class="btn btn-ghost btn-sm connected-only d-none navbar-desktop-only"
               data-bs-toggle="offcanvas"
               data-bs-target="#offcanvasAdvanced"
               aria-label="Advanced"
@@ -102,8 +106,6 @@
         <i class="bi bi-gear"></i>
       </button>
 
-      <!-- Burger toggler — mobile only, connected-only. Hidden on lg+ by
-           Bootstrap's navbar-expand-lg rule. -->
       <button class="navbar-toggler connected-only d-none"
               type="button"
               data-bs-toggle="collapse"
@@ -117,38 +119,47 @@
   </div>
 </nav>
 
-<!-- ========== PRINTER STATUS STRIP (sticky under navbar) ========== -->
-<div id="statusStrip" class="printer-status-strip border-bottom collapse" role="status" aria-live="polite">
-  <div class="container-xxl py-2 d-flex flex-wrap align-items-center gap-3 small">
-    <span class="d-flex align-items-center gap-2 fw-semibold">
-      <i class="bi bi-printer-fill text-primary"></i>
-      <span data-field="serial_number">—</span>
-    </span>
-    <span class="strip-divider"></span>
-    <span class="d-flex align-items-center gap-2" title="Battery">
-      <i class="bi bi-battery-half"></i>
-      <span data-field="battery">—</span>
-    </span>
-    <span class="strip-divider"></span>
-    <span class="d-flex align-items-center gap-2" title="Paper">
-      <i class="bi bi-file-earmark"></i>
-      <span data-field="paper_state">—</span>
-    </span>
-    <span class="strip-divider"></span>
-    <span class="d-flex align-items-center gap-2" title="Cover">
-      <i class="bi bi-door-closed"></i>
-      <span data-field="cover_state">—</span>
-    </span>
-    <span class="strip-divider"></span>
-    <span class="d-flex align-items-center gap-2" title="Cartridge">
-      <i class="bi bi-upc-scan"></i>
-      <span data-field="material_size">—</span>
-      <span class="text-body-secondary">·</span>
-      <span data-field="material_paper">—</span>
-      <span class="color-swatch ms-1" data-swatch="material_bg" title="Background"></span>
-    </span>
+<!-- ========== PRINTER STATUS STRIP (sticky under navbar) ==========
+     Fields are individual `.strip-field` spans separated by CSS pseudo-
+     dots. The spans carry `data-field="..."` so the driver's frame
+     listener can setField() into them directly. The cartridge swatch
+     keeps its `data-swatch="material_bg"` for the swatch painter. -->
+<div id="statusStrip" class="status-strip border-bottom collapse" role="status" aria-live="polite">
+  <div class="container-xxl">
+    <div class="strip-inner px-3 px-lg-4">
+      <span class="strip-field">
+        <i class="bi bi-upc text-secondary"></i>
+        <span class="label">Serial</span>
+        <span class="value mono" data-field="serial_number">—</span>
+      </span>
+      <span class="strip-field">
+        <i class="bi bi-battery-half text-success"></i>
+        <span class="label">Battery</span>
+        <span class="value" data-field="battery">—</span>
+      </span>
+      <span class="strip-field">
+        <i class="bi bi-layers"></i>
+        <span class="label">Paper</span>
+        <span class="value" data-field="paper_state">—</span>
+      </span>
+      <span class="strip-field">
+        <i class="bi bi-box-seam"></i>
+        <span class="label">Cover</span>
+        <span class="value" data-field="cover_state">—</span>
+      </span>
+      <span class="strip-field">
+        <i class="bi bi-tag"></i>
+        <span class="label">Cartridge</span>
+        <span class="color-swatch" data-swatch="material_bg" title="Background"></span>
+        <span class="value" data-field="material_size">—</span>
+      </span>
+    </div>
   </div>
 </div>
+
+</div>
+<!-- /.app-chrome -->
+
 
 <main class="container-xxl py-3">
 
@@ -159,47 +170,53 @@
   </div>
 
   <!-- ========== HERO (shown when disconnected) ========== -->
-  <section id="hero" class="hero-section text-center py-5 my-3">
-    <div class="hero-icon mb-3">
-      <i class="bi bi-printer"></i>
-    </div>
-    <h1 class="h2 fw-bold mb-2">Connect your label printer</h1>
-    <p class="lead text-body-secondary mb-4">
-      Turn on your P780BT and pair it in your system Bluetooth settings, then click below.
-    </p>
-    <button type="button" class="btn btn-primary btn-lg hero-cta" id="btnConnect">
-      <i id="btnConnectIcon" class="bi bi-bluetooth me-1"></i>
-      <span id="btnConnectText">Connect printer</span>
-    </button>
+  <section id="hero" class="hero-wrap">
+    <div class="hero">
+      <div class="hero-glyph"><i class="bi bi-printer"></i></div>
+      <h1>Connect your label printer</h1>
+      <p class="lead">
+        Turn on your <strong>P780BT</strong>, make sure it's paired in your OS Bluetooth
+        settings, then click below. Nothing to install — everything runs in this tab.
+      </p>
 
-    <!-- Which entry to pick -->
-    <div class="hero-picker-hint alert alert-secondary small mt-4 mb-0 mx-auto text-start" role="note">
-      <div class="d-flex align-items-start gap-2">
-        <i class="bi bi-info-circle-fill text-info mt-1"></i>
-        <div>
-          <div class="fw-semibold mb-1">Picking the right entry in the browser dialog</div>
-          <div class="text-body-secondary">
-            Your printer may appear as more than one item. Pick the one named
-            <b class="text-body">P780BT</b> or <b class="text-body">JL_SPP</b>.
-            Skip anything labelled <span class="text-body-secondary">"Peripheral Bluetooth"</span>
-            or <span class="text-body-secondary">"Standard Serial over Bluetooth"</span> — those lead to a dead channel.
+      <button type="button" class="btn btn-connect btn-lg" id="btnConnect">
+        <i id="btnConnectIcon" class="bi bi-bluetooth me-2"></i>
+        <span id="btnConnectText">Connect printer</span>
+      </button>
+
+      <!-- Picker hint: which entries to pick / skip in the browser's BT dialog. -->
+      <div class="alert picker-hint mt-4 mb-0 py-3 px-3" role="note">
+        <div class="d-flex align-items-start gap-2 mb-2">
+          <i class="bi bi-info-circle-fill text-info mt-1"></i>
+          <div class="small">
+            In the browser picker, pick the matching serial entry. Skip generic ones.
           </div>
-          <button class="btn btn-link btn-sm p-0 mt-1" type="button"
-                  data-bs-toggle="collapse" data-bs-target="#pickerExplain">
-            Why do I see multiple entries?
-          </button>
-          <div class="collapse mt-2" id="pickerExplain">
-            <div class="small text-body-secondary">
-              Windows exposes several Bluetooth-serial endpoints for one paired printer: a named one that matches the printer's service, plus generic placeholders. We only speak to the named one.
-              If you pick a wrong entry, the app detects it within a second and disconnects with a message — nothing bad happens.
-            </div>
+        </div>
+        <div class="d-flex flex-column gap-1 mt-2">
+          <div class="entry pick mono"><span><i class="bi bi-check2 me-1"></i> P780BT</span><span>pick</span></div>
+          <div class="entry pick mono"><span><i class="bi bi-check2 me-1"></i> JL_SPP</span><span>pick</span></div>
+          <div class="entry skip mono"><span>Peripheral Bluetooth</span><span>skip</span></div>
+          <div class="entry skip mono"><span>Standard Serial over Bluetooth</span><span>skip</span></div>
+        </div>
+        <button class="btn btn-link btn-sm p-0 mt-2" type="button"
+                data-bs-toggle="collapse" data-bs-target="#pickerExplain">
+          Why do I see multiple entries?
+        </button>
+        <div class="collapse mt-2" id="pickerExplain">
+          <div class="small text-body-secondary">
+            Bluetooth often surfaces the SPP profile under two names — the printer's friendly
+            name and its service alias. Either one will work. The system entries
+            ("Peripheral", "Standard Serial") are OS-level shims and won't respond.
+            If you pick a wrong entry, the app detects it within a second and disconnects
+            with a message — nothing bad happens.
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="mt-3 small text-body-secondary">
-      Works in Chrome or Edge (desktop). Pair the printer with your OS first.
+      <div class="hero-foot">
+        Works in <strong>Chrome</strong> or <strong>Edge</strong> on desktop.
+        Pair the printer with your OS first. Not supported on Safari, Firefox, or iOS.
+      </div>
     </div>
   </section>
 
@@ -212,15 +229,20 @@
 
         <!-- DESIGNER (8) -->
         <section class="col-xl-8">
-          <div class="card shadow-sm accent-primary h-100">
+          <div class="card accent-primary h-100">
             <i class="bi bi-vector-pen card-watermark"></i>
-            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-              <span class="d-flex align-items-center gap-2 fw-semibold">
-                <i class="bi bi-vector-pen text-primary"></i> Design your label
-              </span>
-              <span class="badge text-bg-secondary small" id="designerSizeHint"><span data-role="l">&mdash;</span> mm long &times; <span data-role="w">&mdash;</span> mm wide</span>
-            </div>
             <div class="card-body">
+
+              <!-- Card title row: colored icon box + title + right-side size badge. -->
+              <div class="card-title-row mb-3">
+                <span class="card-icon"><i class="bi bi-vector-pen"></i></span>
+                <div>
+                  <div class="fw-semibold">Design your label</div>
+                  <div class="small text-secondary" id="designerSizeHint">
+                    <span data-role="l">&mdash;</span>&nbsp;mm long &times; <span data-role="w">&mdash;</span>&nbsp;mm wide
+                  </div>
+                </div>
+              </div>
 
               <!-- Cartridge-width mismatch alert (shown only when the designer's
                    cartridge width differs from the physically-loaded one). -->
@@ -232,47 +254,47 @@
                 </div>
               </div>
 
-              <!-- Size row -->
-              <div class="size-row-with-diagram d-flex gap-3 align-items-stretch mb-3 flex-wrap">
-                <div class="size-axis-diagram" aria-hidden="true">
-                  <div class="sad-tape"><span class="sad-label-w">length &rarr;</span><span class="sad-label-h">width</span></div>
+              <!-- Size row: labeled cartridge diagram on the left + inputs on the right. -->
+              <div class="row g-3 align-items-center mb-3">
+                <div class="col-12 col-md-5">
+                  <div class="cartridge-diagram" aria-label="Cartridge geometry">
+                    <span class="cd-width-label">Width<br><span data-role="w">—</span>&nbsp;mm</span>
+                    <div class="cd-label-shape" aria-hidden="true"></div>
+                    <div class="cd-length-axis"><span>Length</span><span class="line"></span><span><span data-role="l">—</span>&nbsp;mm</span></div>
+                  </div>
                 </div>
-                <div class="row g-2 flex-grow-1 mb-0">
-                  <div class="col-sm-4">
-                    <label class="form-label small mb-1" for="lblHeightMm">
-                      Cartridge width (mm)
-                      <i class="bi bi-info-circle ms-1 text-body-secondary" title="Physical tape width. Must match the cartridge currently loaded into the printer. P780BT supports 12, 18 and 24 mm cartridges."></i>
-                    </label>
-                    <select id="lblHeightMm" class="form-select form-select-sm">
-                      <option value="12">12 mm</option>
-                      <option value="18">18 mm</option>
-                      <option value="24">24 mm</option>
-                    </select>
+                <div class="col-6 col-md-2">
+                  <label class="form-label small mb-1" for="lblHeightMm">Cartridge width</label>
+                  <select id="lblHeightMm" class="form-select form-select-sm">
+                    <option value="12">12 mm</option>
+                    <option value="18">18 mm</option>
+                    <option value="24">24 mm</option>
+                  </select>
+                </div>
+                <div class="col-6 col-md-2">
+                  <label class="form-label small mb-1" for="lblWidthMm">Length</label>
+                  <div class="input-group input-group-sm">
+                    <input type="number" id="lblWidthMm" min="10" max="200" step="1" value="40" placeholder="e.g. 40" class="form-control">
+                    <span class="input-group-text">mm</span>
                   </div>
-                  <div class="col-sm-4">
-                    <label class="form-label small mb-1" for="lblWidthMm">Label length (mm)</label>
-                    <input type="number" id="lblWidthMm" min="10" max="200" step="1" value="40" placeholder="e.g. 40" class="form-control form-control-sm">
-                  </div>
-                  <div class="col-sm-4">
-                    <label class="form-label small mb-1" for="lblDither">
-                      Image style
-                      <i class="bi bi-info-circle ms-1 text-body-secondary" title="How grayscale images are converted to black &amp; white dots"></i>
-                    </label>
-                    <select id="lblDither" class="form-select form-select-sm">
-                      <option value="threshold" selected>Sharp (threshold)</option>
-                      <option value="floyd">Smooth (Floyd-Steinberg)</option>
-                      <option value="atkinson">Soft (Atkinson)</option>
-                      <option value="none">None</option>
-                    </select>
-                  </div>
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label small mb-1" for="lblDither">
+                    Image style
+                    <i class="bi bi-info-circle ms-1 text-body-secondary" title="How grayscale images are converted to black &amp; white dots"></i>
+                  </label>
+                  <select id="lblDither" class="form-select form-select-sm">
+                    <option value="threshold" selected>Sharp (threshold)</option>
+                    <option value="floyd">Smooth (Floyd-Steinberg)</option>
+                    <option value="atkinson">Soft (Atkinson)</option>
+                    <option value="none">None</option>
+                  </select>
                 </div>
               </div>
 
               <!-- Elements toolbar -->
               <div class="d-flex align-items-center justify-content-between mb-2">
-                <div class="small text-body-secondary text-uppercase fw-semibold" style="letter-spacing:.08em">
-                  <i class="bi bi-layers me-1"></i>Elements
-                </div>
+                <div class="eyebrow">Elements</div>
                 <div class="d-flex align-items-center gap-2">
                   <div class="btn-group btn-group-sm">
                     <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -296,40 +318,37 @@
               </div>
               <div id="elementsList" class="elements-list mb-3"></div>
 
-              <!-- Preview header -->
-              <div class="small text-body-secondary text-uppercase fw-semibold mb-2 d-flex align-items-center gap-2 flex-wrap" style="letter-spacing:.08em">
-                <i class="bi bi-eye me-1"></i>Preview <span id="previewPxHint" class="text-body-secondary text-lowercase ms-1"></span>
-                <div class="ms-auto d-flex align-items-center gap-2 text-lowercase fw-normal">
-                  <div class="d-flex align-items-center gap-1">
-                    <span class="small text-body-secondary">Selected:</span>
-                    <div class="btn-group btn-group-sm" role="group">
-                      <button class="btn btn-outline-secondary" id="btnCenterH" aria-label="Center horizontally" title="Center horizontally" disabled><i class="bi bi-arrows-collapse-vertical"></i></button>
-                      <button class="btn btn-outline-secondary" id="btnCenterV" aria-label="Center vertically" title="Center vertically" disabled><i class="bi bi-arrows-collapse"></i></button>
-                      <button class="btn btn-outline-secondary" id="btnCenterBoth" aria-label="Center on both axes" title="Center on both axes" disabled><i class="bi bi-bullseye"></i></button>
-                    </div>
+              <!-- Preview header: left-side eyebrow label, right-side toggles. -->
+              <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                <div class="eyebrow d-flex align-items-center gap-2">
+                  Preview <span id="previewPxHint" class="text-body-secondary text-lowercase"></span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Center selected">
+                    <button class="btn btn-outline-secondary" id="btnCenterH" aria-label="Center horizontally" title="Center horizontally" disabled><i class="bi bi-arrows-collapse-vertical"></i></button>
+                    <button class="btn btn-outline-secondary" id="btnCenterV" aria-label="Center vertically" title="Center vertically" disabled><i class="bi bi-arrows-collapse"></i></button>
+                    <button class="btn btn-outline-secondary" id="btnCenterBoth" aria-label="Center on both axes" title="Center on both axes" disabled><i class="bi bi-bullseye"></i></button>
                   </div>
                   <div class="form-check form-switch small mb-0">
                     <input class="form-check-input" type="checkbox" role="switch" id="chkGrid" checked>
-                    <label class="form-check-label" for="chkGrid"><i class="bi bi-grid-3x3"></i> grid</label>
+                    <label class="form-check-label" for="chkGrid">grid</label>
                   </div>
                   <div class="form-check form-switch small mb-0">
                     <input class="form-check-input" type="checkbox" role="switch" id="chkSnap" checked>
-                    <label class="form-check-label" for="chkSnap"><i class="bi bi-magnet"></i> snap</label>
+                    <label class="form-check-label" for="chkSnap">snap</label>
                   </div>
                 </div>
               </div>
-              <div class="small text-body-secondary mb-2">
-                <i class="bi bi-arrows-move"></i> drag &middot; resize corner &middot; <kbd>Del</kbd> remove
-              </div>
-              <div class="preview-wrap">
+
+              <div class="designer-canvas-wrap">
                 <canvas id="labelCanvas" width="320" height="200"></canvas>
               </div>
+              <div class="toolbar-hint">
+                drag to move &middot; handle at corner to resize &middot; <kbd>Del</kbd> to remove
+              </div>
 
-              <!-- Designer footer actions — the natural next step after
-                   the preview looks right is to push the label into the
-                   print queue. Save-as-template and Clear live here as
-                   secondary actions on either side of the primary CTA. -->
-              <div class="designer-actions d-flex gap-2 mt-3 flex-wrap">
+              <!-- Designer footer actions — Save-as-template + Add-to-queue + Clear. -->
+              <div class="d-flex gap-2 mt-3 pt-3 border-top flex-wrap">
                 <button id="btnSaveTemplate" type="button" class="btn btn-outline-primary" title="Save this label as a reusable template">
                   <i class="bi bi-bookmark-plus me-1"></i> Save as template
                 </button>
@@ -347,51 +366,54 @@
 
         <!-- PRINT CARD (4) -->
         <section class="col-xl-4">
-          <div class="card shadow-sm accent-success print-card">
-            <i class="bi bi-printer card-watermark"></i>
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <span class="d-flex align-items-center gap-2 fw-semibold">
-                <i class="bi bi-printer-fill text-success"></i> Print
-              </span>
-              <span id="queueCount" class="badge text-bg-success small">0 labels</span>
-            </div>
-            <div class="card-body d-flex flex-column gap-3">
+          <div class="card accent-success print-card">
+            <i class="bi bi-printer-fill card-watermark"></i>
+            <div class="card-body">
 
-              <!-- Queue — always visible at the top of the Print card.
-                   Each queue item carries its own per-label `copies`
-                   counter (default 1), so there's no global Copies field
-                   anymore — the Print button iterates each item × its
-                   copies when it fires. -->
-              <div class="queue-section">
-                <div class="small text-body-secondary text-uppercase fw-semibold mb-2" style="letter-spacing:.08em">
-                  <i class="bi bi-list-check me-1"></i>Queue
-                </div>
-                <div id="queueList" class="queue-list mb-2">
-                  <div class="queue-empty text-body-secondary text-center py-3 small">
-                    <i class="bi bi-inbox d-block mb-1" style="font-size:1.25rem"></i>
-                    Queue is empty.
-                  </div>
-                </div>
-                <button id="btnClearQueue" class="btn btn-outline-secondary btn-sm w-100" disabled>
-                  <i class="bi bi-trash me-1"></i> Clear queue
-                </button>
+              <!-- Title row: success-accent card-icon + right-side labels badge. -->
+              <div class="card-title-row accent-success mb-3">
+                <span class="card-icon"><i class="bi bi-printer-fill"></i></span>
+                <div class="fw-semibold">Print</div>
+                <span id="queueCount" class="badge text-bg-success ms-auto">0 labels</span>
               </div>
 
-              <!-- Print options — blank-feed toggle sits right above the
-                   big Print CTA so the user sees the relevant flag next
-                   to the action that consumes it. -->
-              <div class="form-check form-switch small">
+              <div class="eyebrow mb-2">Queue</div>
+              <!-- Each queue item carries its own per-label `copies` counter
+                   (default 1), so there's no global Copies field — Print
+                   iterates each item × its copies. -->
+              <div id="queueList" class="queue-list mb-2">
+                <div class="queue-empty">
+                  <i class="bi bi-inbox"></i>
+                  Queue is empty
+                  <div class="small mt-1">Add your design to start printing.</div>
+                </div>
+              </div>
+              <button id="btnClearQueue" class="btn btn-outline-secondary btn-sm w-100 mt-2" disabled>
+                <i class="bi bi-trash me-1"></i> Clear queue
+              </button>
+
+              <!-- Blank-feed toggle sits right above the CTA so the user sees
+                   the relevant flag next to the action that consumes it. -->
+              <div class="form-check form-switch small mt-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="qContinuous" checked>
                 <label class="form-check-label" for="qContinuous" title="Skip the blank feed between labels by forcing PAPER_TYPE=Continuous for each job">
                   No blank feed between labels
                 </label>
               </div>
 
-              <div id="printProgressWrap">
-                <button id="btnPrintQueue" class="btn btn-success btn-lg print-cta w-100" disabled><i class="bi bi-printer-fill me-2"></i><span id="btnPrintQueueLabel">Print</span></button>
-                <div id="printProgress" class="print-progress d-none" role="status">
-                  <div class="d-flex align-items-center gap-2 small mb-1"><div class="spinner-border spinner-border-sm text-success" role="status"></div><span>Printing <b id="printProgressCurrent">0</b> of <b id="printProgressTotal">0</b>&hellip;</span></div>
-                  <div class="progress" style="height:8px"><div id="printProgressBar" class="progress-bar bg-success" style="width:0%"></div></div>
+              <div id="printProgressWrap" class="mt-3">
+                <button id="btnPrintQueue" class="btn-print-cta" disabled>
+                  <i class="bi bi-printer-fill"></i>
+                  <span id="btnPrintQueueLabel">Print</span>
+                </button>
+                <div id="printProgress" class="print-progress-wrap d-none mt-3" role="status">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="spinner-border spinner-border-sm text-success" role="status"></div>
+                    <div class="fw-semibold">Printing <span id="printProgressCurrent">0</span> of <span id="printProgressTotal">0</span>&hellip;</div>
+                  </div>
+                  <div class="progress" style="height:8px">
+                    <div id="printProgressBar" class="progress-bar bg-success" style="width:0%"></div>
+                  </div>
                 </div>
               </div>
 
@@ -431,15 +453,17 @@
         </div>
       </div>
 
-      <div id="templatesGallery" class="row g-3">
+      <!-- Template grid: auto-fill columns ≥220px wide. Cards are produced
+           by app.js (renderTemplatesGallery) and styled by `.template-card`. -->
+      <div id="templatesGallery" class="template-grid">
         <!-- Populated by app.js (renderTemplatesGallery) -->
       </div>
 
-      <div id="templatesEmpty" class="text-center py-5 d-none">
-        <i class="bi bi-collection display-4 text-body-secondary mb-3 d-block"></i>
-        <h5 class="fw-semibold mb-1">No templates yet</h5>
+      <div id="templatesEmpty" class="empty-state d-none">
+        <div class="glyph"><i class="bi bi-collection"></i></div>
+        <h5 class="mb-1">No templates yet</h5>
         <p class="text-body-secondary mb-3">Design a label on the <b>Design &amp; Print</b> tab, then click <i class="bi bi-bookmark-plus"></i> <b>Save as template</b>.</p>
-        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-target="#view-design" onclick="document.getElementById('nav-design-btn').click()">
+        <button type="button" class="btn btn-primary" data-bs-target="#view-design" onclick="document.getElementById('nav-design-btn').click()">
           <i class="bi bi-vector-pen me-1"></i> Open designer
         </button>
       </div>
@@ -452,32 +476,30 @@
 
         <!-- Printer identity -->
         <section class="col-12">
-          <div class="card shadow-sm accent-primary">
+          <div class="card accent-primary">
             <i class="bi bi-fingerprint card-watermark"></i>
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <span class="d-flex align-items-center gap-2 fw-semibold">
-                <i class="bi bi-fingerprint text-primary"></i> Printer
-              </span>
-              <button class="btn btn-link btn-sm p-0 text-decoration-none"
-                      type="button" data-bs-toggle="collapse" data-bs-target="#printerDetails"
-                      aria-expanded="false">
-                Show details <i class="bi bi-chevron-down"></i>
-              </button>
-            </div>
             <div class="card-body">
-              <dl class="row mb-0">
-                <dt class="col-sm-3 text-body-secondary fw-normal small">Serial number</dt>
-                <dd class="col-sm-9 fw-semibold font-monospace" data-field="serial_number">—</dd>
-              </dl>
+              <div class="card-title-row mb-2">
+                <span class="card-icon"><i class="bi bi-fingerprint"></i></span>
+                <div>
+                  <div class="fw-semibold">Printer identity</div>
+                  <div class="small text-secondary">Read-only hardware info</div>
+                </div>
+                <button class="btn btn-link btn-sm p-0 text-decoration-none ms-auto"
+                        type="button" data-bs-toggle="collapse" data-bs-target="#printerDetails"
+                        aria-expanded="false">
+                  Show details <i class="bi bi-chevron-down"></i>
+                </button>
+              </div>
+              <div class="mono fs-4" data-field="serial_number" style="letter-spacing:0.03em;">—</div>
               <div class="collapse" id="printerDetails">
-                <hr class="my-3">
-                <dl class="row mb-0 small">
-                  <dt class="col-sm-3 text-body-secondary fw-normal">Firmware</dt>
-                  <dd class="col-sm-9 fw-semibold" data-field="firmware_version">—</dd>
-                  <dt class="col-sm-3 text-body-secondary fw-normal">BT MAC</dt>
-                  <dd class="col-sm-9 fw-semibold font-monospace" data-field="bt_mac">—</dd>
-                  <dt class="col-sm-3 text-body-secondary fw-normal">BT chip</dt>
-                  <dd class="col-sm-9 fw-semibold" data-field="bt_chip_type">—</dd>
+                <dl class="row small mb-0 mt-3">
+                  <dt class="col-sm-3 text-secondary fw-normal">Firmware</dt>
+                  <dd class="col-sm-9 mono" data-field="firmware_version">—</dd>
+                  <dt class="col-sm-3 text-secondary fw-normal">BT MAC</dt>
+                  <dd class="col-sm-9 mono" data-field="bt_mac">—</dd>
+                  <dt class="col-sm-3 text-secondary fw-normal">BT chip</dt>
+                  <dd class="col-sm-9" data-field="bt_chip_type">—</dd>
                 </dl>
               </div>
             </div>
@@ -485,45 +507,41 @@
         </section>
 
         <!-- Battery & power -->
-        <section class="col-12">
-          <div class="card shadow-sm accent-success">
+        <section class="col-12 col-md-6">
+          <div class="card accent-success h-100">
             <i class="bi bi-battery-charging card-watermark"></i>
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <span class="d-flex align-items-center gap-2 fw-semibold">
-                <i class="bi bi-battery-half text-success"></i> Battery &amp; power
-              </span>
-              <button class="btn btn-link btn-sm p-0 text-decoration-none"
-                      type="button" data-bs-toggle="collapse" data-bs-target="#powerDetails"
-                      aria-expanded="false">
-                Show details <i class="bi bi-chevron-down"></i>
-              </button>
-            </div>
             <div class="card-body">
-              <div class="d-flex align-items-center gap-3 mb-3">
-                <div class="progress flex-grow-1" role="progressbar" style="height:14px">
-                  <div id="batteryBar" class="progress-bar bg-success" style="width:0%"></div>
-                </div>
-                <span class="fw-semibold" data-field="battery">—</span>
+              <div class="card-title-row accent-success mb-3">
+                <span class="card-icon"><i class="bi bi-battery-half"></i></span>
+                <div class="fw-semibold">Battery &amp; power</div>
+                <button class="btn btn-link btn-sm p-0 text-decoration-none ms-auto"
+                        type="button" data-bs-toggle="collapse" data-bs-target="#powerDetails"
+                        aria-expanded="false">
+                  Details <i class="bi bi-chevron-down"></i>
+                </button>
+              </div>
+
+              <!-- Tall pill showing fill width + centered percentage label. The
+                   existing `#batteryBar` is reused inside as the `.fill` so
+                   the driver's frame listener updates width/class as before. -->
+              <div class="battery-bar mb-3" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                <div id="batteryBar" class="fill bg-success" style="width:0%"></div>
+                <div class="pct" data-field="battery">—</div>
               </div>
 
               <!-- Safe setting: Auto power-off -->
-              <div class="row g-3 align-items-end">
-                <div class="col-md-6">
-                  <label class="form-label small mb-1" for="selAutoPower">Auto power-off</label>
-                  <div class="input-group input-group-sm">
-                    <select id="selAutoPower" class="form-select" data-write-control disabled></select>
-                    <button id="btnApplyAutoPower" class="btn btn-primary" data-write-control disabled>Save</button>
-                  </div>
-                </div>
+              <label class="form-label small mb-1" for="selAutoPower">Auto power-off</label>
+              <div class="input-group input-group-sm">
+                <select id="selAutoPower" class="form-select write-control" data-write-control disabled></select>
+                <button id="btnApplyAutoPower" class="btn btn-outline-primary write-control" data-write-control disabled>Save</button>
               </div>
 
               <div class="collapse mt-3" id="powerDetails">
-                <hr class="my-3">
                 <dl class="row mb-0 small">
-                  <dt class="col-sm-3 text-body-secondary fw-normal">Current auto-off</dt>
-                  <dd class="col-sm-9 fw-semibold" data-field="auto_power_time">—</dd>
-                  <dt class="col-sm-3 text-body-secondary fw-normal">Head temperature</dt>
-                  <dd class="col-sm-9 fw-semibold" data-field="hot_state">—</dd>
+                  <dt class="col-sm-6 text-secondary fw-normal">Current auto-off</dt>
+                  <dd class="col-sm-6 fw-semibold" data-field="auto_power_time">—</dd>
+                  <dt class="col-sm-6 text-secondary fw-normal">Head temperature</dt>
+                  <dd class="col-sm-6 fw-semibold" data-field="hot_state">—</dd>
                 </dl>
               </div>
             </div>
@@ -531,138 +549,97 @@
         </section>
 
         <!-- Paper & cartridge -->
-        <section class="col-12">
-          <div class="card shadow-sm accent-warning">
+        <section class="col-12 col-md-6">
+          <div class="card accent-warning h-100">
             <i class="bi bi-upc-scan card-watermark"></i>
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <span class="d-flex align-items-center gap-2 fw-semibold">
-                <i class="bi bi-upc-scan text-warning"></i> Paper &amp; cartridge
-              </span>
-              <div class="d-flex align-items-center gap-2">
-                <span id="materialHint" class="badge text-bg-secondary small">not read</span>
-                <button class="btn btn-link btn-sm p-0 text-decoration-none"
-                        type="button" data-bs-toggle="collapse" data-bs-target="#paperDetails"
-                        aria-expanded="false">
-                  Show details <i class="bi bi-chevron-down"></i>
-                </button>
-              </div>
-            </div>
             <div class="card-body">
+              <div class="card-title-row accent-warning mb-3">
+                <span class="card-icon"><i class="bi bi-tag"></i></span>
+                <div class="fw-semibold">Paper &amp; cartridge</div>
+                <span id="materialHint" class="badge text-bg-secondary ms-auto">not read</span>
+              </div>
+
               <!-- Primary 3-stat strip: the three values the user cares about most. -->
-              <div class="paper-stat-strip row g-3">
-                <div class="col-md-4">
-                  <div class="paper-stat">
-                    <div class="ps-label">Paper</div>
-                    <div class="ps-value" data-field="paper_state">—</div>
-                  </div>
-                </div>
-                <div class="col-md-4">
-                  <div class="paper-stat">
-                    <div class="ps-label">Cover</div>
-                    <div class="ps-value" data-field="cover_state">—</div>
-                  </div>
-                </div>
-                <div class="col-md-4">
-                  <div class="paper-stat">
-                    <div class="ps-label">Cartridge</div>
-                    <div class="ps-value" data-field="material_size">—</div>
-                  </div>
-                </div>
+              <div class="stat-strip-3">
+                <div class="stat-cell"><div class="k">Paper</div><div class="v" data-field="paper_state">—</div></div>
+                <div class="stat-cell"><div class="k">Cover</div><div class="v" data-field="cover_state">—</div></div>
+                <div class="stat-cell"><div class="k">Cartridge</div><div class="v" data-field="material_size">—</div></div>
               </div>
 
               <!-- Safe setting: Paper type override (next job only) -->
-              <hr class="my-3">
-              <div class="row g-3 align-items-end">
-                <div class="col-md-6">
-                  <label class="form-label small mb-1" for="selPaperType">
-                    Paper type for next job
-                    <i class="bi bi-info-circle ms-1 text-body-secondary" title="Applies only to the next print job; not persisted across reboots."></i>
-                  </label>
-                  <div class="input-group input-group-sm">
-                    <select id="selPaperType" class="form-select" data-write-control disabled></select>
-                    <button id="btnApplyPaperType" class="btn btn-primary" data-write-control disabled>Apply</button>
-                  </div>
-                </div>
+              <label class="form-label small mb-1" for="selPaperType">Paper type for next job</label>
+              <div class="input-group input-group-sm">
+                <select id="selPaperType" class="form-select write-control" data-write-control disabled></select>
+                <button id="btnApplyPaperType" class="btn btn-outline-primary write-control" data-write-control disabled>Apply</button>
               </div>
+              <div class="small text-secondary mt-1">One-shot setting &mdash; not persisted.</div>
+              <button class="btn btn-link btn-sm px-0 mt-1"
+                      type="button" data-bs-toggle="collapse" data-bs-target="#paperDetails"
+                      aria-expanded="false">Show details</button>
 
-              <div class="collapse mt-3" id="paperDetails">
-                <hr class="my-3">
-                <div class="row g-3 mb-3">
-                  <div class="col-md-4">
-                    <div class="small text-body-secondary">Detected label type</div>
-                    <div class="fw-semibold" data-field="label_type">—</div>
-                  </div>
-                  <div class="col-md-4">
-                    <div class="small text-body-secondary">Paper type (cartridge)</div>
-                    <div class="fw-semibold" data-field="material_paper">—</div>
-                  </div>
-                  <div class="col-md-4">
-                    <div class="small text-body-secondary">Category</div>
-                    <div class="fw-semibold" data-field="material_cat">—</div>
-                  </div>
-                  <div class="col-md-4">
-                    <div class="small text-body-secondary">Background</div>
-                    <div class="fw-semibold d-flex align-items-center gap-2">
-                      <span class="color-swatch" data-swatch="material_bg"></span>
-                      <span data-field="material_bg">—</span>
-                    </div>
-                  </div>
-                  <div class="col-md-4">
-                    <div class="small text-body-secondary">Text color</div>
-                    <div class="fw-semibold d-flex align-items-center gap-2">
-                      <span class="color-swatch" data-swatch="material_fg"></span>
-                      <span data-field="material_fg">—</span>
-                    </div>
-                  </div>
-                  <div class="col-md-4">
-                    <div class="small text-body-secondary">Cover (cartridge)</div>
-                    <div class="fw-semibold" data-field="material_cover">—</div>
-                  </div>
-                </div>
-                <dl class="row mb-0 small">
-                  <dt class="col-sm-3 text-body-secondary fw-normal">RFID ID</dt>
-                  <dd class="col-sm-9 fw-semibold font-monospace" data-field="material_rfid">—</dd>
-                  <dt class="col-sm-3 text-body-secondary fw-normal">RFID label info</dt>
-                  <dd class="col-sm-9 fw-semibold" data-field="rfid_label_info">—</dd>
-                  <dt class="col-sm-3 text-body-secondary fw-normal">RFID remain</dt>
-                  <dd class="col-sm-9 fw-semibold" data-field="rfid_remain">—</dd>
+              <div class="collapse" id="paperDetails">
+                <dl class="row mb-0 small mt-2">
+                  <dt class="col-sm-5 text-secondary fw-normal">Detected label type</dt>
+                  <dd class="col-sm-7" data-field="label_type">—</dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">Paper type (cartridge)</dt>
+                  <dd class="col-sm-7" data-field="material_paper">—</dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">Category</dt>
+                  <dd class="col-sm-7" data-field="material_cat">—</dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">Background</dt>
+                  <dd class="col-sm-7 d-flex align-items-center gap-2">
+                    <span class="color-swatch" data-swatch="material_bg"></span>
+                    <span data-field="material_bg">—</span>
+                  </dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">Text color</dt>
+                  <dd class="col-sm-7 d-flex align-items-center gap-2">
+                    <span class="color-swatch" data-swatch="material_fg"></span>
+                    <span data-field="material_fg">—</span>
+                  </dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">Cover (cartridge)</dt>
+                  <dd class="col-sm-7" data-field="material_cover">—</dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">RFID ID</dt>
+                  <dd class="col-sm-7 mono" data-field="material_rfid">—</dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">RFID label info</dt>
+                  <dd class="col-sm-7" data-field="rfid_label_info">—</dd>
+                  <dt class="col-sm-5 text-secondary fw-normal">RFID remain</dt>
+                  <dd class="col-sm-7" data-field="rfid_remain">—</dd>
                 </dl>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- Expert tuning: moved here from the Advanced offcanvas so it lives
-             next to the rest of the Printer controls. Hidden unless the
-             "Enable expert controls" switch in the offcanvas is on. -->
+        <!-- Expert tuning: shown when the "Enable expert controls" switch in
+             the Advanced offcanvas is on. -->
         <section class="col-12" id="expertTuningSection" hidden>
-          <div class="card shadow-sm accent-info">
+          <div class="card accent-info">
             <i class="bi bi-sliders card-watermark"></i>
-            <div class="card-header d-flex align-items-center gap-2 fw-semibold">
-              <i class="bi bi-sliders text-info"></i> Tuning
-              <span class="badge text-bg-warning small ms-auto"><i class="bi bi-unlock-fill me-1"></i>Expert</span>
-            </div>
             <div class="card-body">
+              <div class="card-title-row accent-info mb-3">
+                <span class="card-icon"><i class="bi bi-sliders"></i></span>
+                <div class="fw-semibold">Tuning</div>
+                <span class="badge text-bg-warning ms-auto"><i class="bi bi-unlock-fill me-1"></i>Expert</span>
+              </div>
               <div class="row g-3">
-                <div class="col-md-4">
-                  <label class="form-label small mb-1" for="inpDensity">Print density <span class="text-body-secondary">(1&ndash;10)</span></label>
+                <div class="col-12 col-md-4">
+                  <label class="form-label small mb-1" for="inpDensity">Print density <span class="text-secondary">(1&ndash;10)</span></label>
                   <div class="input-group input-group-sm">
-                    <input id="inpDensity" type="number" min="1" max="10" step="1" value="3" class="form-control" data-write-control disabled>
-                    <button id="btnApplyDensity" class="btn btn-primary" data-write-control disabled>Apply</button>
+                    <input id="inpDensity" type="number" min="1" max="10" step="1" value="3" class="form-control write-control" data-write-control disabled>
+                    <button id="btnApplyDensity" class="btn btn-outline-info write-control" data-write-control disabled>Apply</button>
                   </div>
                 </div>
-                <div class="col-md-4">
-                  <label class="form-label small mb-1" for="inpSpeed">Print speed <span class="text-body-secondary">(1&ndash;5)</span></label>
+                <div class="col-12 col-md-4">
+                  <label class="form-label small mb-1" for="inpSpeed">Print speed <span class="text-secondary">(1&ndash;5)</span></label>
                   <div class="input-group input-group-sm">
-                    <input id="inpSpeed" type="number" min="1" max="5" step="1" value="3" class="form-control" data-write-control disabled>
-                    <button id="btnApplySpeed" class="btn btn-primary" data-write-control disabled>Apply</button>
+                    <input id="inpSpeed" type="number" min="1" max="5" step="1" value="3" class="form-control write-control" data-write-control disabled>
+                    <button id="btnApplySpeed" class="btn btn-outline-info write-control" data-write-control disabled>Apply</button>
                   </div>
                 </div>
-                <div class="col-md-4">
-                  <label class="form-label small mb-1" for="inpMargin">Left offset <span class="text-body-secondary">(0&ndash;255)</span></label>
+                <div class="col-12 col-md-4">
+                  <label class="form-label small mb-1" for="inpMargin">Left offset <span class="text-secondary">(0&ndash;255)</span></label>
                   <div class="input-group input-group-sm">
-                    <input id="inpMargin" type="number" min="0" max="255" step="1" value="0" class="form-control" data-write-control disabled>
-                    <button id="btnApplyMargin" class="btn btn-primary" data-write-control disabled>Apply</button>
+                    <input id="inpMargin" type="number" min="0" max="255" step="1" value="0" class="form-control write-control" data-write-control disabled>
+                    <button id="btnApplyMargin" class="btn btn-outline-info write-control" data-write-control disabled>Apply</button>
                   </div>
                 </div>
               </div>
@@ -928,12 +905,12 @@
     <div class="modal-header"><h5 class="modal-title" id="wrongEndpointModalLabel"><i class="bi bi-bluetooth me-2 text-warning"></i>Wrong Bluetooth endpoint</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
     <div class="modal-body">
       <p>That serial port didn't respond to our identity probe.</p>
-      <div class="alert alert-secondary small mb-2">
+      <div class="alert alert-secondary bg-transparent border small mb-3">
         <div class="fw-semibold mb-1"><i class="bi bi-list-check me-1"></i>If you haven't connected yet</div>
-        In the picker, pick the entry labelled <b class="text-body">P780BT</b> or <b class="text-body">JL_SPP</b>.
-        Skip anything labelled <i>Peripheral Bluetooth</i> or <i>Standard Serial over Bluetooth</i>.
+        In the picker, pick the entry labelled <b class="mono">P780BT</b> or <b class="mono">JL_SPP</b>.
+        Skip anything labelled <span class="mono">Peripheral Bluetooth</span> or <span class="mono">Standard Serial over Bluetooth</span>.
       </div>
-      <div class="alert alert-warning small mb-0">
+      <div class="macos-hint small mb-0">
         <div class="fw-semibold mb-1"><i class="bi bi-apple me-1"></i>On macOS after a disconnect</div>
         This is a <b>known Chromium bug</b> on macOS — tracked upstream at
         <a href="https://issues.chromium.org/issues/345369596" class="link-warning" target="_blank" rel="noopener">issues.chromium.org/345369596</a>.
