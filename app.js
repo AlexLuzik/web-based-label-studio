@@ -1,5 +1,5 @@
 // =====================================================================
-//  BT Label Printer — UI, designer, queue, templates
+//  Web-based Label Studio — UI, designer, queue, templates
 // ---------------------------------------------------------------------
 //  Author:   Oleksandr Luzin <https://luzin.cc>
 //  Source:   https://luzin.cc
@@ -13,8 +13,8 @@
 //  identity check, raster layout, the print-job pipeline — lives in
 //  `./printer/*.js` behind the Driver contract. This file talks to
 //  the driver instance through events + high-level method calls;
-//  swapping to a different model is a matter of registering a
-//  different driver id in `./printer/index.js`.
+//  adding support for a new printer model is a matter of registering
+//  another driver id in `./printer/index.js`.
 //
 //  The app is loaded as an ES module (`<script type="module">` in
 //  index.html). That means it must be served over http(s) — Chrome
@@ -31,9 +31,9 @@ import { createDriver } from './printer/index.js';
 // ---------------------------------------------------------------------
 //  All protocol bytes, frame decoding, identity check, raster layout
 //  and the print-job pipeline live in `./printer/*.js` behind the
-//  Driver contract. Swapping in a new model is a matter of registering
-//  a different driver id in `./printer/index.js` — the UI code below
-//  never references P780BT-specific bytes.
+//  Driver contract. The UI code below doesn't reference any specific
+//  printer model — it only uses the getters on the active driver
+//  (`driver.dpi`, `driver.model`, `driver.commands`, etc).
 // ---------------------------------------------------------------------
 
 // ---------- Driver selection (auto-detect + persistence) ----------
@@ -339,7 +339,11 @@ driver.addEventListener('connected', (ev) => {
     strip.classList.add('is-loading');
     strip.setAttribute('aria-busy', 'true');
   }
-  logLine('info', 'Connected.');
+  // The printer doesn't report its own model name on the wire — the
+  // SN registry + active driver imply it. Paint `driver.model` into
+  // every `[data-field="model"]` surface (status strip + About).
+  setField('model', driver.model);
+  logLine('info', `Connected to ${driver.model}.`);
   // Remember the driver id that successfully identified a printer —
   // next session will pick this up from localStorage via
   // pickDriverId() and skip the identity-failed → reload dance even
@@ -353,6 +357,9 @@ driver.addEventListener('connected', (ev) => {
 driver.addEventListener('disconnected', () => {
   setStatus('disconnected', 'disconnected');
   setButtonsEnabled(false);
+  // Reset the synthesised model field so stale data doesn't persist
+  // if the hero becomes visible again.
+  setField('model', '—');
   // Clean the exchange log on disconnect so a fresh session starts
   // with a blank scrollback instead of accumulating forever.
   if (ui.log) ui.log.innerHTML = '';

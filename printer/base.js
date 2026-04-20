@@ -1,20 +1,17 @@
 // =====================================================================
-//  BTPrinter / quin-base.js — base class for the QuinPrinter family
+//  BTPrinter / base.js — shared base class for all printer models
 // ---------------------------------------------------------------------
-//  The vendor PrintMaster Android app uses ONE driver (`QuinPrinter`)
-//  for ~40 printer models. Each model gets a `*Printer.java` subclass
-//  that tweaks a handful of parameters — DPI, dither threshold,
-//  bitmap scale factor, the end-of-job "pager" byte, max print width —
-//  but the wire protocol (`1F 11 <cmd>` requests / `1A <tag> <payload>`
-//  responses) is identical.
+//  A large set of Bluetooth thermal label printers speak the same
+//  wire protocol (`1F 11 <cmd>` requests / `1A <tag> <payload>`
+//  responses) and differ only in a handful of parameters — DPI,
+//  dither threshold, bitmap scale factor, the end-of-job "pager"
+//  byte, max print width. `PrinterDriver` owns everything shared
+//  (framing, decoding, identity check, raster packing, print
+//  pipeline). Per-model subclasses in `./models.js` only override
+//  the parameter getters.
 //
-//  This file mirrors that architecture: `QuinPrinterDriver` owns
-//  everything shared (framing, decoding, identity check, raster
-//  packing, print pipeline). Per-model subclasses in `./quin-models.js`
-//  only override the parameter getters.
-//
-//  Identity check uses `sn-registry.js` — the driver accepts the port
-//  if the SN-prefix maps to one of its declared `vendorModels`,
+//  Identity check uses `./sn-registry.js` — the driver accepts the
+//  port if the SN-prefix maps to one of its declared `vendorModels`,
 //  otherwise it rejects with a message that names the actual model
 //  (so the user knows whether they connected to the wrong printer,
 //  or a model we haven't written a driver for yet).
@@ -24,7 +21,7 @@ import { Driver } from './driver-base.js';
 import { ResponseParser } from './transport.js';
 import { detectDriverBySn } from './sn-registry.js';
 
-// ---------- Protocol constants (shared across ALL QuinPrinter models) ----------
+// ---------- Protocol constants (shared across every supported model) ----------
 
 const REQ_PREFIX  = [0x1F, 0x11];
 const RESP_PREFIX = 0x1A;
@@ -341,7 +338,7 @@ function canvasToMonoBytes(canvas, method = 'threshold', threshold = 128) {
 }
 
 /**
- * Pack a 1bpp raster for a QuinPrinter-family printer. Rotates the
+ * Pack a 1bpp raster for a printer-driver family printer. Rotates the
  * canvas 90° so canvas-width (= feed direction) becomes raster-rows,
  * and canvas-height (= tape-width direction) becomes raster-cols.
  *
@@ -382,7 +379,7 @@ function monoToRaster(mono, w, h, { feedShiftPx = 0, verticalShiftPx = 0 } = {})
 // ---------- The base driver class ----------
 
 /**
- * Base for every QuinPrinter-family driver. Subclasses provide their
+ * Base for every printer-driver family driver. Subclasses provide their
  * model-specific parameters via getters:
  *
  *   Required:
@@ -401,7 +398,7 @@ function monoToRaster(mono, w, h, { feedShiftPx = 0, verticalShiftPx = 0 } = {})
  * Everything else (protocol bytes, frame decoder, identity check,
  * print pipeline) is inherited unchanged.
  */
-export class QuinPrinterDriver extends Driver {
+export class PrinterDriver extends Driver {
   constructor() {
     super();
     // Print-job lifecycle state (beginJob / sendRaster / endJob).
@@ -453,7 +450,7 @@ export class QuinPrinterDriver extends Driver {
   // ----- Identity check -----
 
   /**
-   * Probe for a QuinPrinter-family printer via the SN query (`1F 11 09`
+   * Probe for a printer-driver family printer via the SN query (`1F 11 09`
    * → `1A 08 <15 ASCII>`). Accept if the SN prefix maps (via
    * `sn-registry.js`) to one of THIS driver's declared `vendorModels`,
    * reject with an informative reason otherwise.
@@ -631,7 +628,7 @@ export class QuinPrinterDriver extends Driver {
   // ----- Print pipeline -----
 
   /**
-   * Convert a designer canvas into a QuinPrinter raster blob (header +
+   * Convert a designer canvas into a printer raster blob (header +
    * packed 1bpp rows). Pure function — no I/O. Uses `this.ditherThreshold`
    * and the model's `printFeedShiftPx` / `printVerticalShiftPx` nudges.
    */
@@ -688,7 +685,7 @@ export class QuinPrinterDriver extends Driver {
   }
 
   /** Close the print job. Uses the model's `printPagerBytes` — this is
-   *  the parameter that differs most between QuinPrinter models (each
+   *  the parameter that differs most between supported models (each
    *  model's firmware expects a specific page-end command). */
   async endJob() {
     try {
@@ -701,7 +698,7 @@ export class QuinPrinterDriver extends Driver {
 }
 
 // Re-exports for inspector UIs / debugging.
-export const QUIN_CONSTANTS = {
+export const PROTOCOL_CONSTANTS = {
   REQ_PREFIX, RESP_PREFIX,
   GET_COMMANDS, SET_COMMANDS, ACTIONS, RESP_LEN,
   BATTERY_MARKERS, AUTO_POWER_P,

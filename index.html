@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="author" content="Oleksandr Luzin" />
-  <meta name="description" content="Web Serial controller for the P780BT Bluetooth thermal label printer — design labels, manage a print queue, and configure the device, all in the browser." />
+  <meta name="description" content="Web-based Label Studio — a browser Web Serial controller for Bluetooth thermal label printers. Design labels, manage a print queue, and configure the device, all in the browser." />
   <link rel="author" href="https://luzin.cc" />
-  <title>Web-based printing app for P780BT</title>
+  <title>Label Studio · Web-based</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
@@ -41,8 +41,8 @@
     <a href="#" class="app-brand">
       <span class="app-brand-mark"><i class="bi bi-printer-fill"></i></span>
       <span class="d-flex flex-column lh-1">
-        <span>P780BT</span>
-        <span class="app-brand-sub">Label Studio</span>
+        <span>Label Studio</span>
+        <span class="app-brand-sub">Web-based</span>
       </span>
     </a>
 
@@ -127,6 +127,14 @@
 <div id="statusStrip" class="status-strip border-bottom collapse" role="status" aria-live="polite">
   <div class="container-xxl">
     <div class="strip-inner px-3 px-lg-4">
+      <!-- Model is populated by app.js from driver.model on 'connected',
+           not from the protocol — the wire doesn't carry a model
+           string, we derive it from the SN-prefix registry lookup. -->
+      <span class="strip-field">
+        <i class="bi bi-printer text-secondary"></i>
+        <span class="label">Model</span>
+        <span class="value" data-field="model">—</span>
+      </span>
       <span class="strip-field">
         <i class="bi bi-upc text-secondary"></i>
         <span class="label">Serial</span>
@@ -175,7 +183,7 @@
       <div class="hero-glyph"><i class="bi bi-printer"></i></div>
       <h1>Connect your label printer</h1>
       <p class="lead">
-        Turn on your <strong>P780BT</strong>, make sure it's paired in your OS Bluetooth
+        Turn on your label printer, make sure it's paired in your OS Bluetooth
         settings, then click below. Nothing to install — everything runs in this tab.
       </p>
 
@@ -193,7 +201,7 @@
           </div>
         </div>
         <div class="d-flex flex-column gap-1 mt-2">
-          <div class="entry pick mono"><span><i class="bi bi-check2 me-1"></i> P780BT</span><span>pick</span></div>
+          <div class="entry pick mono"><span><i class="bi bi-check2 me-1"></i> Your printer's model name (e.g. P780BT, D480BT, D680BT, …)</span><span>pick</span></div>
           <div class="entry pick mono"><span><i class="bi bi-check2 me-1"></i> JL_SPP</span><span>pick</span></div>
           <div class="entry skip mono"><span>Peripheral Bluetooth</span><span>skip</span></div>
           <div class="entry skip mono"><span>Standard Serial over Bluetooth</span><span>skip</span></div>
@@ -716,7 +724,7 @@
 
   <footer class="text-body-secondary small mt-auto pt-4 pb-3 d-flex align-items-center gap-2 flex-wrap">
     <i class="bi bi-info-circle"></i>
-    <span>Web-based printing app for P780BT</span>
+    <span>Web-based Label Studio</span>
     <span class="text-body-secondary">&middot;</span>
     <span>
       built by
@@ -825,6 +833,8 @@
         <div id="accAbout" class="accordion-collapse collapse" data-bs-parent="#advAccordion">
           <div class="accordion-body">
             <dl class="row mb-0 small">
+              <dt class="col-sm-5 text-body-secondary fw-normal">Model</dt>
+              <dd class="col-sm-7 fw-semibold" data-field="model">—</dd>
               <dt class="col-sm-5 text-body-secondary fw-normal">Firmware</dt>
               <dd class="col-sm-7 fw-semibold" data-field="firmware_version">—</dd>
               <dt class="col-sm-5 text-body-secondary fw-normal">Serial</dt>
@@ -979,7 +989,9 @@
       <p id="wrongEndpointReason">That serial port didn't respond to our identity probe.</p>
       <div class="alert alert-secondary bg-transparent border small mb-3">
         <div class="fw-semibold mb-1"><i class="bi bi-list-check me-1"></i>If you haven't connected yet</div>
-        In the picker, pick the entry labelled <b class="mono">P780BT</b> or <b class="mono">JL_SPP</b>.
+        In the picker, pick the entry matching your printer model
+        (e.g. <b class="mono">P780BT</b>, <b class="mono">D480BT</b>, …)
+        or the universal chip name <b class="mono">JL_SPP</b>.
         Skip anything labelled <span class="mono">Peripheral Bluetooth</span> or <span class="mono">Standard Serial over Bluetooth</span>.
       </div>
       <div class="macos-hint small mb-0">

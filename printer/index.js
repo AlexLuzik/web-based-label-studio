@@ -14,7 +14,7 @@
 
 import { SerialLink, ResponseParser } from './transport.js';
 import { Driver }                     from './driver-base.js';
-import { QuinPrinterDriver, QUIN_CONSTANTS } from './quin-base.js';
+import { PrinterDriver, PROTOCOL_CONSTANTS } from './base.js';
 import {
   // P family (P780BT = reference driver, the one tested on real
   // hardware; others are derived from vendor source)
@@ -27,7 +27,7 @@ import {
   D30Driver, D30SDriver, D50Driver, Q30Driver,
   // Misc
   A30Driver, LM1600Driver, M950Driver, M960Driver,
-} from './quin-models.js';
+} from './models.js';
 
 // ---------- Driver registry ----------
 
@@ -70,11 +70,10 @@ export function listDrivers() {
 // serial number to a specific driver.
 //
 // P780BT is tested and known-working on actual hardware. Every other
-// model listed below is a thin parameter shim derived from the vendor
-// Java source (`com/project/aimotech/printer/*Printer.java`) — the
-// protocol is the same QuinPrinter ESC-POS-style wire format, only
-// DPI / dither / pager-byte / tape-width differ. The drivers haven't
-// been field-tested; see `./quin-models.js` for per-model notes.
+// model listed below is a thin parameter shim — same wire protocol,
+// just different DPI / dither threshold / end-of-job bytes / tape
+// width. Those drivers haven't been field-tested; see `./models.js`
+// for per-model notes.
 
 registerDriver('p780bt',    P780BTDriver);
 
@@ -115,10 +114,10 @@ if (typeof window !== 'undefined') {
     SerialLink,
     ResponseParser,
     Driver,
-    QuinPrinterDriver,
+    PrinterDriver,
     P780BTDriver,
     // Constants — useful for hex-dumping responses by hand.
-    QUIN_CONSTANTS,
+    PROTOCOL_CONSTANTS,
     P780BT_CONSTANTS,
     // Factory / registry.
     createDriver,
@@ -133,6 +132,6 @@ if (typeof window !== 'undefined') {
 export {
   SerialLink, ResponseParser,
   Driver,
-  QuinPrinterDriver, QUIN_CONSTANTS,
+  PrinterDriver, PROTOCOL_CONSTANTS,
   P780BTDriver, P780BT_CONSTANTS,
 };
