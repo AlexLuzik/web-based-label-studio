@@ -487,13 +487,13 @@ body > main > footer {
   color: var(--bs-secondary-color);
 }
 
-/* Inspector X/Y/W/H unit suffix (greyed mm/px tag inside input-group) */
+/* Inspector X/Y/W/H unit tag — sits next to the field label (top-right
+ * of each cell), not inside an input-group, so the whole cell width
+ * stays available for the number. Just a muted grey glyph, no chrome. */
 .unit-suffix {
-  background: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.12);
   color: rgba(255,255,255,.5);
   font-size: .7rem;
-  padding: 0 .4rem;
+  font-weight: 400;
 }
 
 /* Focus-visible ring */

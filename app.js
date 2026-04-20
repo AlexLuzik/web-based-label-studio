@@ -2192,19 +2192,24 @@ function renderElementEditor(el, idx) {
       </div>
     </div>`;
 
-  // P1.11 — X/Y/W/H inputs wrap in an input-group with a unit-suffix badge.
-  // Values stay in px internally; when `showMm` is on we render rounded mm
-  // and the input handler converts the user's mm entry back to px on change.
+  // P1.11 — X/Y/W/H values stay in px internally; when `showMm` is on we
+  // render rounded mm and the input handler converts the user's mm entry
+  // back to px on change. The unit tag sits next to the field label
+  // (instead of as an input-group suffix) so the whole cell width is
+  // available for the number — mm values like `123.4` would otherwise
+  // clip inside the narrow input-group layout. Numbers right-align so
+  // the trailing digits stay visible if the value still overflows.
   const mm = !!state.showMm;
   const unit = mm ? 'mm' : 'px';
   const disp = v => mm ? pxToMmDisplay(v) : (v | 0);
   const step = mm ? 0.1 : 1;
   const renderPos = (key, label) => `
-      <div class="col-3"><label class="form-label small mb-0">${label}</label>
-        <div class="input-group input-group-sm">
-          <input type="number" class="form-control form-control-sm" step="${step}" data-bind="${key}" data-unit="${unit}" value="${disp(el[key])}">
-          <span class="input-group-text unit-suffix">${unit}</span>
-        </div>
+      <div class="col">
+        <label class="form-label small mb-0 d-flex justify-content-between align-items-baseline">
+          <span>${label}</span>
+          <span class="unit-suffix">${unit}</span>
+        </label>
+        <input type="number" class="form-control form-control-sm text-end" step="${step}" data-bind="${key}" data-unit="${unit}" value="${disp(el[key])}">
       </div>`;
   const posBlock = `
     <div class="row g-1 mb-2">
