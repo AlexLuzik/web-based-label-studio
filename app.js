@@ -1330,6 +1330,35 @@ function onCanvasMouseDown(evt) {
     return;
   }
   state.selectedId = hit.el.id;
+
+  // -----------------------------------------------------------------
+  // Viewport-anchored drag math.
+  //
+  // The old implementation read canvasCoords(evt) — which calls
+  // getBoundingClientRect() every mousemove — and compared it against
+  // a dragOffset captured at mousedown. If ANYTHING between those two
+  // calls changed the canvas's viewport rect (inspector popping in
+  // below, scrollbar appearing, a row being added above, etc.) the
+  // next move sampled an incorrect canvas-local point and the
+  // element jumped.
+  //
+  // Instead, snapshot the starting cursor position in VIEWPORT
+  // coordinates (evt.clientX/Y) and the element's starting
+  // position/size. During mousemove, compute a delta against the
+  // starting clientX/Y and apply it to the starting position. The
+  // canvas rect doesn't appear in the hot path at all, so page
+  // reflows can't corrupt the drag.
+  //
+  // `canvasScale` compensates for CSS-scaled canvases: if the canvas's
+  // drawing buffer is wider than its display box (e.g. on narrow
+  // viewports where `max-width: 100%` shrinks it), viewport pixels
+  // differ from buffer pixels. Captured once at mousedown and reused
+  // for the whole drag so mid-drag layout changes can't bend it.
+  // -----------------------------------------------------------------
+  const rect = dui.canvas.getBoundingClientRect();
+  const canvasScaleX = rect.width  ? dui.canvas.width  / rect.width  : 1;
+  const canvasScaleY = rect.height ? dui.canvas.height / rect.height : 1;
+
   if (hit.part === 'handle') {
     dragMode = 'resize';
     // For text, snapshot fontSize and the measured bbox so we can scale
@@ -1341,23 +1370,35 @@ function onCanvasMouseDown(evt) {
       h: hit.el.h ?? bbox0.h,
       fontSize: hit.el.fontSize,
     };
-    dragOffset = { x: p.x, y: p.y };
   } else {
     dragMode = 'move';
-    dragOffset = { x: p.x - hit.el.x, y: p.y - hit.el.y };
   }
+
+  // Single source of truth for the whole drag — viewport start coords,
+  // element's starting layout, and a cached scale. Re-used read-only
+  // in onCanvasMouseMove.
+  dragOffset = {
+    startClientX: evt.clientX,
+    startClientY: evt.clientY,
+    startElX: hit.el.x,
+    startElY: hit.el.y,
+    canvasScaleX,
+    canvasScaleY,
+  };
+
   dui.canvas.style.cursor = dragMode === 'resize' ? 'nwse-resize' : 'grabbing';
   // Safe to rebuild immediately: the inspector lives BELOW the canvas
-  // in the DOM (see index.html), so toggling its visibility grows the
-  // card downward without touching the canvas's viewport rect — the
-  // drag math (`dragOffset` vs. `canvasCoords`) stays valid.
+  // in the DOM (see index.html), AND the drag math above no longer
+  // depends on the canvas rect. Any reflow from renderInspector is
+  // harmless to the in-flight drag.
   renderPreview();
   buildElementsList();
 }
 
 function onCanvasMouseMove(evt) {
-  const p = canvasCoords(evt);
   if (!dragMode) {
+    // Hover state — use canvas-local coords for hit-testing + cursor.
+    const p = canvasCoords(evt);
     const hit = hitTest(p.x, p.y);
     dui.canvas.style.cursor =
       hit ? (hit.part === 'handle' ? 'nwse-resize' : 'move') : 'default';
@@ -1366,14 +1407,17 @@ function onCanvasMouseMove(evt) {
   const el = state.elements.find(e => e.id === state.selectedId);
   if (!el) return;
 
+  // Viewport-delta in buffer pixels (scale-compensated).
+  const dx = (evt.clientX - dragOffset.startClientX) * dragOffset.canvasScaleX;
+  const dy = (evt.clientY - dragOffset.startClientY) * dragOffset.canvasScaleY;
+
   const canvasSize = currentSize();
 
   if (dragMode === 'move') {
-    let nx = Math.round(p.x - dragOffset.x);
-    let ny = Math.round(p.y - dragOffset.y);
+    let nx = Math.round(dragOffset.startElX + dx);
+    let ny = Math.round(dragOffset.startElY + dy);
     const ctx = dui.canvas.getContext('2d');
     const bbox = getElementBBox({ ...el, x: nx, y: ny }, ctx);
-    // snap & guides
     const snap = state.snap ? snapPosition(bbox, canvasSize.w, canvasSize.h) : { dx: 0, dy: 0, guides: [] };
     nx += snap.dx;
     ny += snap.dy;
@@ -1381,8 +1425,6 @@ function onCanvasMouseMove(evt) {
     el.y = clamp(ny, -bbox.h, canvasSize.h);
     state.activeGuides = snap.guides;
   } else if (dragMode === 'resize') {
-    const dx = p.x - dragOffset.x;
-    const dy = p.y - dragOffset.y;
     if (isTextLike(el)) {
       // Scale fontSize proportional to the vertical drag.
       const base = dragStartSize.h || 1;
