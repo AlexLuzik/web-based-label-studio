@@ -44,7 +44,7 @@ export class Driver extends EventTarget {
   constructor() {
     super();
     if (new.target === Driver) {
-      throw new TypeError('Driver is abstract — subclass it (see printer/base.js + printer/models.js)');
+      throw new TypeError('Driver is abstract — subclass it (see base.js + models.js)');
     }
     this.link = null;
     this._parser = null;

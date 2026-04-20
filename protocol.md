@@ -607,7 +607,7 @@ models — see §§4–10.
 - **Dither** — binarization threshold for the 1-bpp conversion
   (0..255; midpoint 128). `200` biases darker.
 - **SN prefix(es)** — the first 4 ASCII characters of the serial
-  number that resolve (via `printer/sn-registry.js`) to this
+  number that resolve (via `sn-registry.js`) to this
   driver. `— (force)` = this project has the driver but the SN
   registry doesn't auto-select it (either no prefix is uniquely
   known, or the prefix overlaps a sibling); use the

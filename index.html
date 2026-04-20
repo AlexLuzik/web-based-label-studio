@@ -1058,8 +1058,8 @@
   </div>
 </div>
 
-<!-- The app is an ES module (`import` from ./printer/*). It must be
-     served over http(s) — `file://` is blocked by Chrome's module
+<!-- The app is an ES module (`import` from sibling .js files). It must
+     be served over http(s) — `file://` is blocked by Chrome's module
      loader. `python -m http.server 8000` in the repo root is enough. -->
 <script type="module" src="./app.js"></script>
 

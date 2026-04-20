@@ -11,10 +11,11 @@
 //
 //  Anything printer-specific — protocol bytes, response decoding,
 //  identity check, raster layout, the print-job pipeline — lives in
-//  `./printer/*.js` behind the Driver contract. This file talks to
-//  the driver instance through events + high-level method calls;
-//  adding support for a new printer model is a matter of registering
-//  another driver id in `./printer/index.js`.
+//  the sibling driver modules (`drivers.js`, `base.js`, `models.js`,
+//  `transport.js`, `driver-base.js`, `sn-registry.js`) behind the
+//  Driver contract. This file talks to the driver instance through
+//  events + high-level method calls; adding support for a new printer
+//  model is a matter of registering another driver id in `drivers.js`.
 //
 //  The app is loaded as an ES module (`<script type="module">` in
 //  index.html). That means it must be served over http(s) — Chrome
@@ -24,13 +25,14 @@
 
 'use strict';
 
-import { createDriver } from './printer/index.js';
+import { createDriver } from './drivers.js';
 
 // ---------------------------------------------------------------------
 //  Printer driver
 // ---------------------------------------------------------------------
 //  All protocol bytes, frame decoding, identity check, raster layout
-//  and the print-job pipeline live in `./printer/*.js` behind the
+//  and the print-job pipeline live in the sibling driver modules
+//  (`drivers.js` + `base.js` + `models.js` + friends) behind the
 //  Driver contract. The UI code below doesn't reference any specific
 //  printer model — it only uses the getters on the active driver
 //  (`driver.dpi`, `driver.model`, `driver.commands`, etc).
@@ -639,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Designer renders directly at the printer's native effective DPI so the
 // raster pipeline stays a pure 1:1 pass-through (no scale mismatch). DPI
 // comes from the active driver, so swapping to a 203-dpi printer later
-// just requires changing the driver id in `./printer/index.js`.
+// just requires changing the driver id in `./drivers.js`.
 const DPI = driver.dpi;
 const PX_PER_MM = driver.pxPerMm;
 

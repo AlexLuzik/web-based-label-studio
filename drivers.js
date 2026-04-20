@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------
 //  This file is the single import surface for the rest of the app:
 //
-//      import { createDriver, registerDriver } from './printer/index.js';
+//      import { createDriver, registerDriver } from './drivers.js';
 //      const driver = createDriver('p780bt');
 //
 //  It also exposes a `BTPrinter` namespace on `window` for debugging

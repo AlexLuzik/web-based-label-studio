@@ -154,17 +154,20 @@ Cloudflare Pages, Vercel, plain Nginx, `python -m http.server`).
 ├── index.html                ← all markup (nav, views, modals)
 ├── styles.css                ← custom dark-theme overlay on Bootstrap
 ├── app.js                    ← UI / designer / queue (see below)
-├── printer/                  ← pluggable printer driver layer
-│   ├── transport.js          ← generic Web Serial + framing parser
-│   ├── driver-base.js        ← abstract Driver (EventTarget + waitForTag)
-│   ├── base.js               ← concrete family base + shared constants
-│   ├── models.js             ← per-model parameter shims (24 drivers)
-│   ├── sn-registry.js        ← SN-prefix → model lookup for auto-detect
-│   └── index.js              ← createDriver() factory + registry
+├── drivers.js                ← createDriver() factory + registry
+├── transport.js              ← generic Web Serial + framing parser
+├── driver-base.js            ← abstract Driver (EventTarget + waitForTag)
+├── base.js                   ← concrete family base + shared constants
+├── models.js                 ← per-model parameter shims (24 drivers)
+├── sn-registry.js            ← SN-prefix → model lookup for auto-detect
 └── protocol.md               ← full reverse-engineered protocol spec
 ```
 
-### About `printer/`
+All files live at the repo root — GitHub Pages serves them as plain
+static assets, and ES module imports resolve as simple sibling paths
+(`./drivers.js`, `./base.js`, …). No subdirectory, no bundler.
+
+### About the driver layer
 
 All protocol-specific code lives behind a **Driver** contract. `app.js`
 never references wire bytes, response tags, DPI constants, or raster
@@ -183,12 +186,12 @@ on the first connect to a new model, then direct connects forever
 after.
 
 To add support for another Bluetooth thermal printer in the same
-family (same wire protocol), you add a thin subclass to
-`printer/models.js` that overrides only the parameter getters that
-differ (`dpi`, `printPagerBytes`, `bitmapScaleSize`,
-`ditherThreshold`, `maxPrintWidthMm`, and the `vendorModels` array of
-SN-model strings it handles), then register it in `printer/index.js`.
-See `protocol.md` §11 for the full per-model parameter table.
+family (same wire protocol), you add a thin subclass to `models.js`
+that overrides only the parameter getters that differ (`dpi`,
+`printPagerBytes`, `bitmapScaleSize`, `ditherThreshold`,
+`maxPrintWidthMm`, and the `vendorModels` array of SN-model strings it
+handles), then register it in `drivers.js`. See `protocol.md` §11 for
+the full per-model parameter table.
 
 Everything above that — designer, inspector, queue, templates, UI —
 runs unchanged against any driver that honours the contract.
