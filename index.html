@@ -233,11 +233,17 @@
             <i class="bi bi-vector-pen card-watermark"></i>
             <div class="card-body">
 
-              <!-- Card title row: colored icon box + title + right-side size badge. -->
+              <!-- Card title row: colored icon box + title (swaps to template
+                   name when editing) + inline "Editing template" badge. -->
               <div class="card-title-row mb-3">
                 <span class="card-icon"><i class="bi bi-vector-pen"></i></span>
                 <div>
-                  <div class="fw-semibold">Design your label</div>
+                  <div class="fw-semibold d-flex align-items-center gap-2 flex-wrap">
+                    <span id="designerTitle">Design your label</span>
+                    <span id="editingBadge" class="badge text-bg-primary d-none">
+                      <i class="bi bi-bookmark-fill me-1"></i>Editing template
+                    </span>
+                  </div>
                   <div class="small text-secondary" id="designerSizeHint">
                     <span data-role="l">&mdash;</span>&nbsp;mm long &times; <span data-role="w">&mdash;</span>&nbsp;mm wide
                   </div>
@@ -347,10 +353,26 @@
                 drag to move &middot; handle at corner to resize &middot; <kbd>Del</kbd> to remove
               </div>
 
-              <!-- Designer footer actions — Save-as-template + Add-to-queue + Clear. -->
+              <!-- Designer footer actions.
+                   Three-way save button swap driven by app.js:
+                     * Not editing a template → only `#btnSaveTemplate`
+                       ("Save as template") is visible.
+                     * Editing a template → `#btnSaveTemplate` is hidden and
+                       `#saveChangesBtn` (overwrite the open template) plus
+                       `#saveAsCopyBtn` (branch into a new template) take
+                       its place. All three open the same save modal
+                       except `#saveChangesBtn`, which updates in place.
+                   IDs match the design handoff so the template-editing
+                   UX lands exactly as the prototype described it. -->
               <div class="d-flex gap-2 mt-3 pt-3 border-top flex-wrap">
                 <button id="btnSaveTemplate" type="button" class="btn btn-outline-primary" title="Save this label as a reusable template">
                   <i class="bi bi-bookmark-plus me-1"></i> Save as template
+                </button>
+                <button id="saveChangesBtn" type="button" class="btn btn-primary d-none" title="Overwrite the open template with the current design">
+                  <i class="bi bi-check2-square me-1"></i> Save changes
+                </button>
+                <button id="saveAsCopyBtn" type="button" class="btn btn-outline-secondary d-none" title="Save the current design as a new template">
+                  <i class="bi bi-files me-1"></i> Save as new
                 </button>
                 <button id="btnAddToQueue" class="btn btn-success flex-grow-1">
                   <i class="bi bi-plus-circle me-1"></i> Add to queue

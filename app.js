@@ -682,6 +682,12 @@ const state = {
   snap: true,
   showMm: false,  // Inspector X/Y/W/H display unit toggle (P1.11)
   activeGuides: [], // transient guides during drag: {axis:'x'|'y', pos:Number}
+  // ID of the template currently loaded into the designer (or null for a
+  // blank canvas). Drives the header "Editing template" badge plus the
+  // three-way save-button swap (Save as template / Save changes / Save
+  // as new). Reset by Clear and by Save-as-new (the freshly-created
+  // template becomes the new open one).
+  openTemplateId: null,
 };
 
 // P1.11 — px <-> mm conversion helpers for the Inspector. State stays in px
@@ -1537,6 +1543,216 @@ function buildElementsList() {
     inp.addEventListener('input', handler);
     inp.addEventListener('change', handler);
   });
+
+  // Wire the `.grip` drag handles on each row for pointer-based
+  // reorder. Bound on every rebuild because the old rows are gone.
+  wireElementsDragReorder();
+}
+
+/* =====================================================================
+ *  Pointer-based drag-to-reorder for the elements list
+ * ---------------------------------------------------------------------
+ *  Picks up a row by its `.grip` handle. While dragging:
+ *    - the source row is greyed in place (`.dragging`),
+ *    - a compact ghost card (clone of the row's `.element-head`) is
+ *      position: fixed-ed to the viewport and translated with the
+ *      cursor,
+ *    - a thin `.drop-indicator` line shows the target insertion slot.
+ *
+ *  On pointerup we commit the move: re-splice `state.elements`, rebuild
+ *  the list, then apply a FLIP animation on every row whose DOM rect
+ *  changed between the pre-drop and post-rebuild snapshots.
+ *
+ *  The list visually renders TOP-DOWN in reverse array order (top of
+ *  the list = topmost layer = last element in state.elements), so the
+ *  reorder converts visual indices → state indices at commit time.
+ * ===================================================================== */
+
+// Active-drag context (singleton). null when nothing is being dragged.
+let _elDrag = null;
+
+function wireElementsDragReorder() {
+  const list = dui.elementsList;
+  if (!list) return;
+  list.querySelectorAll('.grip').forEach(grip => {
+    // `pointerdown` beats the row-level `click` selection because
+    // `click` fires on release after no pointerdown default was
+    // prevented — and we call preventDefault below.
+    grip.addEventListener('pointerdown', _elDragOnGripDown);
+  });
+}
+
+function _elDragOnGripDown(ev) {
+  // Left mouse or touch/pen only; right-clicks + middle-clicks pass through.
+  if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+
+  const grip = ev.currentTarget;
+  const sourceRow = grip.closest('.element-row');
+  const list = dui.elementsList;
+  if (!sourceRow || !list) return;
+
+  const rows = Array.from(list.querySelectorAll('.element-row'));
+  const sourceIdx = rows.indexOf(sourceRow);
+  if (sourceIdx < 0) return;
+
+  const srcRect = sourceRow.getBoundingClientRect();
+
+  // Build the floating ghost. A clone of the row's head line is
+  // enough — the full inspector body would be visually noisy on
+  // large rows and unnecessary for understanding the drag target.
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  const head = sourceRow.querySelector('.element-head');
+  ghost.innerHTML = head ? head.outerHTML : '';
+  ghost.style.width = `${srcRect.width}px`;
+  document.body.appendChild(ghost);
+
+  // Offset keeps the grip under the cursor for the whole drag.
+  const offsetX = ev.clientX - srcRect.left;
+  const offsetY = ev.clientY - srcRect.top;
+  _elDragPositionGhost(ghost, ev.clientX, ev.clientY, offsetX, offsetY);
+
+  // Drop indicator — inserted/moved between rows by pointermove.
+  const indicator = document.createElement('div');
+  indicator.className = 'drop-indicator';
+
+  sourceRow.classList.add('dragging');
+
+  _elDrag = {
+    list, sourceRow, sourceIdx,
+    rows,            // snapshot at drag start; stable reference for FLIP
+    ghost, indicator, offsetX, offsetY,
+    targetIdx: sourceIdx,   // visual index the ghost would drop AT
+    pointerId: ev.pointerId,
+    moved: false,    // set true on the first real move — guards against
+                     // no-op clicks that the grip occasionally swallows
+  };
+
+  // Capturing on the window gives us move/up events even when the
+  // cursor leaves the list (e.g. above the navbar).
+  window.addEventListener('pointermove',  _elDragOnMove,   true);
+  window.addEventListener('pointerup',    _elDragOnUp,     true);
+  window.addEventListener('pointercancel',_elDragOnCancel, true);
+}
+
+function _elDragPositionGhost(ghost, cx, cy, ox, oy) {
+  // Offset upward a hair so the ghost's edge doesn't cover the cursor.
+  const x = cx - ox;
+  const y = cy - oy - 2;
+  ghost.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(1.5deg)`;
+}
+
+function _elDragOnMove(ev) {
+  if (!_elDrag) return;
+  const c = _elDrag;
+  c.moved = true;
+  _elDragPositionGhost(c.ghost, ev.clientX, ev.clientY, c.offsetX, c.offsetY);
+
+  // Compute target insertion slot by comparing cursor Y against the
+  // midpoints of the non-source rows. Result is an integer in
+  // [0, rows.length] where `rows.length` means "drop at the end".
+  const y = ev.clientY;
+  let targetIdx = c.rows.length;
+  for (let i = 0; i < c.rows.length; i++) {
+    if (c.rows[i] === c.sourceRow) continue;
+    const r = c.rows[i].getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    if (y < mid) { targetIdx = i; break; }
+  }
+
+  if (targetIdx !== c.targetIdx) {
+    c.targetIdx = targetIdx;
+    // Re-insert the indicator at the new slot. Removing first keeps
+    // the DOM clean even when the indicator parent changes.
+    if (c.indicator.parentElement) c.indicator.parentElement.removeChild(c.indicator);
+    if (targetIdx >= c.rows.length) {
+      c.list.appendChild(c.indicator);
+    } else {
+      c.list.insertBefore(c.indicator, c.rows[targetIdx]);
+    }
+  }
+}
+
+function _elDragOnCancel() { _elDragCleanup(false); }
+
+function _elDragOnUp(ev) {
+  if (!_elDrag) return;
+  const c = _elDrag;
+  const shouldCommit = c.moved;
+
+  // Snapshot per-row rects BEFORE we mutate state + re-render, so we
+  // can run a FLIP animation (First → Last → Invert → Play) against
+  // the fresh DOM for every row that moved.
+  const preRects = new Map();
+  if (shouldCommit) {
+    for (const r of c.rows) preRects.set(r.dataset.id, r.getBoundingClientRect());
+  }
+
+  // Commit the reorder into state.elements. Visual order is the
+  // REVERSE of state order, so translate indices accordingly.
+  if (shouldCommit) {
+    let from = c.sourceIdx;
+    let to   = c.targetIdx;
+    // When moving forward, removing the source shifts the target down by one.
+    if (to > from) to -= 1;
+    if (to !== from && to >= 0 && to < c.rows.length) {
+      const N = state.elements.length;
+      const fromState = N - 1 - from;
+      const toState   = N - 1 - to;
+      const [moved]   = state.elements.splice(fromState, 1);
+      state.elements.splice(toState, 0, moved);
+    }
+  }
+
+  _elDragCleanup(true);
+
+  if (shouldCommit) {
+    renderPreview();
+    buildElementsList();
+    // FLIP: compare pre/post rects per element id and animate the delta.
+    const newRows = Array.from(dui.elementsList.querySelectorAll('.element-row'));
+    for (const row of newRows) {
+      const id = row.dataset.id;
+      const prev = preRects.get(id);
+      if (!prev) continue;
+      const next = row.getBoundingClientRect();
+      const dx = prev.left - next.left;
+      const dy = prev.top  - next.top;
+      if (dx === 0 && dy === 0) continue;
+      row.style.transform = `translate(${dx}px, ${dy}px)`;
+      row.style.transition = 'none';
+      // Force reflow so the "from" transform takes effect before we
+      // animate back to zero. Reading a layout property does the trick.
+      // eslint-disable-next-line no-unused-expressions
+      row.offsetHeight;
+      row.style.transition = 'transform 220ms cubic-bezier(.2,.8,.2,1)';
+      row.style.transform = '';
+      // Clean up inline styles once the animation finishes so future
+      // hover states / selection outlines aren't held back by them.
+      const cleanup = () => {
+        row.style.transition = '';
+        row.style.transform  = '';
+        row.removeEventListener('transitionend', cleanup);
+      };
+      row.addEventListener('transitionend', cleanup);
+      // Hard fallback timer in case transitionend never fires.
+      setTimeout(cleanup, 320);
+    }
+  }
+}
+
+function _elDragCleanup(withRelease) {
+  window.removeEventListener('pointermove',  _elDragOnMove,   true);
+  window.removeEventListener('pointerup',    _elDragOnUp,     true);
+  window.removeEventListener('pointercancel',_elDragOnCancel, true);
+  if (!_elDrag) return;
+  const c = _elDrag;
+  try { c.ghost && c.ghost.remove(); } catch {}
+  try { c.indicator && c.indicator.remove(); } catch {}
+  if (c.sourceRow) c.sourceRow.classList.remove('dragging');
+  _elDrag = null;
 }
 
 function updateInspectorFields(el) {
@@ -1557,6 +1773,7 @@ function renderElementEditor(el, idx) {
     ? `<span class="badge text-bg-danger small ms-1" title="${escHtml(state.errors[el.id])}"><i class="bi bi-exclamation-triangle-fill"></i></span>` : '';
   const common = `
     <div class="element-head">
+      <span class="grip" role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></span>
       <span class="element-index badge text-bg-secondary">${idx + 1}</span>
       <span class="element-type">${elementIcon(el.type)} ${elementTitle(el.type)}${errorBadge}</span>
       <div class="ms-auto btn-group btn-group-sm">
@@ -2327,6 +2544,14 @@ function saveNewTemplate(name) {
   list.unshift(tpl);
   const ok = saveTemplatesList(list);
   if (ok) {
+    // The freshly-saved template becomes the "open" one — the designer
+    // immediately enters editing mode for it, so the footer switches to
+    // Save changes / Save as new. This matches the design handoff: the
+    // user's mental model after "Save as template" is "I'm now editing
+    // THIS saved template", not "I just took a snapshot and the
+    // designer is still a blank slate".
+    state.openTemplateId = tpl.id;
+    updateDesignerEditingUI();
     showToast('Template saved', 'success');
     renderTemplatesGallery();
   }
@@ -2347,6 +2572,14 @@ function deleteTemplate(id) {
   const list = loadTemplates().filter(t => t.id !== id);
   const ok = saveTemplatesList(list);
   if (ok) {
+    // If the deleted template was the one loaded into the designer,
+    // drop the editing context so the footer reverts to "Save as
+    // template" (the open-template buttons would otherwise target a
+    // 404 and silently noop on Save changes).
+    if (state.openTemplateId === id) {
+      state.openTemplateId = null;
+      updateDesignerEditingUI();
+    }
     showToast('Template deleted', 'info');
     renderTemplatesGallery();
   }
@@ -2398,16 +2631,59 @@ function openTemplateInDesigner(id) {
   state.elements = JSON.parse(JSON.stringify(tpl.elements || []));
   state.selectedId = null;
   state.errors = {};
+  state.openTemplateId = tpl.id;
   // Sync size/dither inputs
   if (dui.widthMm) dui.widthMm.value = state.widthMm;
   if (dui.heightMm) ensureCartridgeOption(dui.heightMm, state.heightMm);
   if (dui.dither) dui.dither.value = state.dither;
   renderPreview();
   buildElementsList();
+  updateDesignerEditingUI();
   // Switch to Design tab
   const designBtn = document.getElementById('nav-design-btn');
   if (designBtn) designBtn.click();
   showToast(`Opened "${tpl.name}"`, 'info');
+}
+
+/**
+ * Keep the designer's header + footer in sync with `state.openTemplateId`.
+ *
+ *   - Not editing (no open template): header shows "Design your label",
+ *     no "Editing template" badge, footer shows just "Save as template".
+ *   - Editing an open template: header shows the template's name and
+ *     the badge; footer swaps "Save as template" for a pair —
+ *     primary "Save changes" (overwrite) + outline "Save as new"
+ *     (branch into a new template).
+ *
+ * Safe to call at any time — re-reads the template name on each call
+ * so a rename elsewhere propagates on the next buildElementsList /
+ * render round-trip. Called from openTemplateInDesigner, Clear, after
+ * Save-as-new, and on designer init.
+ */
+function updateDesignerEditingUI() {
+  const titleEl  = document.getElementById('designerTitle');
+  const badgeEl  = document.getElementById('editingBadge');
+  const saveNew  = document.getElementById('btnSaveTemplate');
+  const saveChg  = document.getElementById('saveChangesBtn');
+  const saveCopy = document.getElementById('saveAsCopyBtn');
+
+  const editing = !!state.openTemplateId;
+  const tpl = editing
+    ? loadTemplates().find(t => t.id === state.openTemplateId)
+    : null;
+
+  // If the open template was deleted elsewhere, drop the reference so
+  // we don't show a ghost name. Save changes would then 404 anyway.
+  if (editing && !tpl) {
+    state.openTemplateId = null;
+    return updateDesignerEditingUI();
+  }
+
+  if (titleEl) titleEl.textContent = tpl ? tpl.name : 'Design your label';
+  if (badgeEl) badgeEl.classList.toggle('d-none', !editing);
+  if (saveNew)  saveNew.classList.toggle('d-none',  editing);
+  if (saveChg)  saveChg.classList.toggle('d-none', !editing);
+  if (saveCopy) saveCopy.classList.toggle('d-none', !editing);
 }
 
 /** P1.10 — push a template straight into the print queue without opening
@@ -2952,6 +3228,8 @@ function initLabelDesigner() {
     // P0.3 — nothing to clear → just reset without a confirm dialog.
     if (state.elements.length === 0) {
       state.selectedId = null;
+      state.openTemplateId = null;
+      updateDesignerEditingUI();
       renderPreview();
       buildElementsList();
       return;
@@ -2964,6 +3242,8 @@ function initLabelDesigner() {
       // Fall back to a non-modal clear if the modal markup is missing.
       state.elements = [];
       state.selectedId = null;
+      state.openTemplateId = null;
+      updateDesignerEditingUI();
       renderPreview();
       buildElementsList();
       return;
@@ -2973,6 +3253,11 @@ function initLabelDesigner() {
       confirmBtn.removeEventListener('click', onConfirm);
       state.elements = [];
       state.selectedId = null;
+      // Clearing the designer also exits the "editing template" mode —
+      // otherwise the user would see "Save changes" still offered
+      // despite there being nothing left to save.
+      state.openTemplateId = null;
+      updateDesignerEditingUI();
       renderPreview();
       buildElementsList();
       modal.hide();
@@ -2988,6 +3273,38 @@ function initLabelDesigner() {
 
   // Templates
   qs('#btnSaveTemplate')?.addEventListener('click', openSaveModal);
+  // "Save changes" — overwrite the open template with the current state.
+  // `updateTemplate` re-stamps updatedAt and re-renders the gallery; we
+  // keep `state.openTemplateId` so the user stays in editing mode.
+  qs('#saveChangesBtn')?.addEventListener('click', () => {
+    if (!state.openTemplateId) return;
+    const patch = templateFromState();
+    // `templateFromState` synthesises a fresh id + default name + new
+    // createdAt. Strip all three so `updateTemplate`'s spread keeps
+    // the original template's identity metadata — only the design
+    // payload (size, dither, elements, thumbnail) overwrites.
+    delete patch.id;
+    delete patch.name;
+    delete patch.createdAt;
+    if (updateTemplate(state.openTemplateId, patch)) {
+      showToast('Template updated', 'success');
+      // Reflect the new thumbnail/updatedAt in the open-template
+      // badge (harmless if name didn't change).
+      updateDesignerEditingUI();
+    } else {
+      showToast('Template not found — saving as new', 'error');
+      state.openTemplateId = null;
+      updateDesignerEditingUI();
+    }
+  });
+  // "Save as new" — opens the save modal which creates a fresh template;
+  // saveNewTemplate will set `state.openTemplateId` to the new id, so
+  // the user smoothly switches from editing the old one to editing the
+  // new one.
+  qs('#saveAsCopyBtn')?.addEventListener('click', openSaveModal);
+  // Initial sync — covers the case where openTemplateId is restored
+  // from somewhere else in the future (currently always starts null).
+  updateDesignerEditingUI();
   qs('#btnNewFromDesigner')?.addEventListener('click', () => {
     // Switch to designer if empty, else open save dialog from Templates tab
     if (state.elements.length === 0) {

@@ -691,6 +691,76 @@ body > main > footer {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .element-row .ebadge { font-size: 0.6875rem; color: var(--bs-tertiary-color); }
+
+/* Drag-to-reorder visuals.
+ *
+ * `.dragging` greys the original row in place while the user drags,
+ * so the UI communicates "this row has been picked up" without making
+ * the pickup feel like a deletion. The floating ghost (below) does
+ * the pointer-tracking.
+ *
+ * `.drag-ghost` is a compact clone of the picked row, positioned at
+ * `position: fixed` and moved via `transform: translate3d(...)` in
+ * the pointermove handler. No pointer events on it — the window
+ * receives the move/up events that drive the drag.
+ *
+ * `.drop-indicator` is a thin accent line that floats between rows
+ * at the target insertion point. app.js inserts / moves it as the
+ * cursor slides over row midpoints.
+ */
+.element-row.dragging {
+  opacity: 0.4;
+  background: rgba(99, 102, 241, 0.06);
+  /* Disable the row's selection outline glow while dragging so the
+   * dimmed state doesn't compete with the ghost. */
+  box-shadow: none !important;
+  cursor: grabbing;
+}
+
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2000;
+  pointer-events: none;
+  width: auto;
+  max-width: 420px;
+  padding: 0.55rem 0.7rem;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--accent-start);
+  border-radius: 8px;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.55),
+              0 0 0 3px rgba(99, 102, 241, 0.15);
+  opacity: 0.96;
+  transform-origin: top left;
+  /* Slight tilt + scale so the card reads as "lifted" vs just sliding. */
+  transition: none;
+  will-change: transform;
+}
+.drag-ghost .element-head {
+  margin-bottom: 0;
+}
+.drag-ghost .btn-group,
+.drag-ghost button,
+.drag-ghost .grip { display: none !important; }
+
+/* The thin accent bar that shows the drop target. Sits as its own
+ * block between rows in the list. */
+.drop-indicator {
+  height: 2px;
+  margin: 0 0.6rem;
+  background: var(--accent-start);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+  pointer-events: none;
+  /* A subtle grow-in so the bar feels magnetic when it lands. */
+  transform-origin: center;
+  animation: drop-indicator-in 120ms ease-out;
+}
+@keyframes drop-indicator-in {
+  from { transform: scaleX(0.2); opacity: 0; }
+  to   { transform: scaleX(1);   opacity: 1; }
+}
 .element-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; font-size: .85rem; }
 .element-type { font-weight: 500; }
 .element-index { font-size: .65rem; opacity: .7; }
