@@ -98,14 +98,57 @@ export const SN_PREFIX_TO_MODEL = Object.freeze({
 
 /**
  * Map from vendor model string → our driver id (as registered in
- * `./index.js`). Only contains entries for models we've actually
- * implemented. Missing = "recognised but not supported" path in
- * detectDriverBySn() below.
+ * `./index.js`). Only contains entries for models we've ACTUALLY
+ * implemented. A missing entry hits the "recognised but not
+ * supported" path in `detectDriverBySn()` below — the UI shows the
+ * user a message naming the specific model they connected so they
+ * know WHY it didn't work.
  *
- * Add new entries here when you drop in a new driver.
+ * The LEFT-hand strings are vendor return values from
+ * `PrinterInfo.getName4Sn()` (sometimes `Serial.X`, sometimes
+ * `Type.X`, sometimes raw literals — we preserve the vendor's
+ * inconsistent naming verbatim). The RIGHT-hand strings are our
+ * internal driver ids (lowercase, no spaces), registered in
+ * `./index.js`.
+ *
+ * Drivers listed below are DERIVED FROM VENDOR SOURCE BUT UNTESTED
+ * against real hardware except P780BT. Add a model here only after
+ * a driver class is registered.
+ *
+ * Explicitly NOT mapped (remain "unsupported" on purpose):
+ *   - B246D — different (text-based) protocol, needs its own driver base
+ *   - E-series, M110C/M120C/M200C/M220C — need the img2Nv compression
+ *     pipeline which we haven't ported
+ *   - Q217 Pro variants (P780BT PRO etc.) — vendor distinguishes by BT
+ *     name, which Web Serial doesn't expose; auto-detection via SN
+ *     alone resolves to the base variant.
  */
 export const MODEL_TO_DRIVER_ID = Object.freeze({
-  'P780': 'p780bt',
+  // P-family — all share 180 DPI ESC-POS-style protocol (vendor P780BT
+  // base). Different end-of-job `PRINT_PAGER` bytes per model.
+  'P780':   'p780bt',
+  'P24':    'p24',
+  'P580':   'p580',
+  'P1000':  'p1000',
+  'P15':    'p15',
+  'P3100D': 'p3100d',
+  'P3200':  'p3200',
+  'LT12':   'lt12',
+
+  // D-family — mix of 180 and 203 DPI variants.
+  'D480':   'd480bt',
+  'D680BT': 'd680bt',
+  'D1600':  'd1600',
+  'D30':    'd30',
+  'D30S':   'd30s',
+  'D50':    'd50',
+  'Q30':    'q30',
+
+  // Misc
+  'A30':    'a30',
+  'LM1600': 'lm1600',
+  'M950':   'm950',
+  'M960':   'm960',
 });
 
 /**

@@ -14,7 +14,19 @@
 
 import { SerialLink, ResponseParser } from './transport.js';
 import { Driver }                     from './driver-base.js';
-import { P780BTDriver, P780BT_CONSTANTS } from './p780bt.js';
+import { QuinPrinterDriver, QUIN_CONSTANTS } from './quin-base.js';
+import { P780BTDriver, P780BT_CONSTANTS }    from './p780bt.js';
+import {
+  // P family
+  P24Driver, P580Driver, P1000Driver, AMP310Driver, P15Driver,
+  P3100DDriver, P3100DJDriver, P3200Driver, P3200DDriver, LT12Driver,
+  // D family
+  D480BTDriver, D480BTProDriver, D680BTDriver,
+  D1600Driver, D1600DDriver,
+  D30Driver, D30SDriver, D50Driver, Q30Driver,
+  // Misc
+  A30Driver, LM1600Driver, M950Driver, M960Driver,
+} from './quin-models.js';
 
 // ---------- Driver registry ----------
 
@@ -43,28 +55,69 @@ export function createDriver(id) {
   return new ctor();
 }
 
-/** List registered driver ids. Useful for building a model-selector UI
- *  once we have more than one driver. */
+/** List registered driver ids. Useful for a manual model selector UI
+ *  (e.g. to force a specific driver when auto-detection by SN isn't
+ *  possible — Pro variants, for instance). */
 export function listDrivers() {
   return Array.from(registry.keys());
 }
 
-// Register the built-in driver(s). New models add a line here.
-registerDriver('p780bt', P780BTDriver);
+// ---------- Built-in driver registration ----------
+//
+// IDs follow lowercase-no-spaces convention. The `MODEL_TO_DRIVER_ID`
+// table in `./sn-registry.js` points at these ids when resolving a
+// serial number to a specific driver.
+//
+// P780BT is tested and known-working on actual hardware. Every other
+// model listed below is a thin parameter shim derived from the vendor
+// Java source (`com/project/aimotech/printer/*Printer.java`) — the
+// protocol is the same QuinPrinter ESC-POS-style wire format, only
+// DPI / dither / pager-byte / tape-width differ. The drivers haven't
+// been field-tested; see `./quin-models.js` for per-model notes.
+
+registerDriver('p780bt',    P780BTDriver);
+
+// P-family
+registerDriver('p24',       P24Driver);
+registerDriver('p580',      P580Driver);
+registerDriver('p1000',     P1000Driver);
+registerDriver('amp310',    AMP310Driver);
+registerDriver('p15',       P15Driver);
+registerDriver('p3100d',    P3100DDriver);
+registerDriver('p3100dj',   P3100DJDriver);
+registerDriver('p3200',     P3200Driver);
+registerDriver('p3200d',    P3200DDriver);
+registerDriver('lt12',      LT12Driver);
+
+// D-family
+registerDriver('d480bt',    D480BTDriver);
+registerDriver('d480btpro', D480BTProDriver);
+registerDriver('d680bt',    D680BTDriver);
+registerDriver('d1600',     D1600Driver);
+registerDriver('d1600d',    D1600DDriver);
+registerDriver('d30',       D30Driver);
+registerDriver('d30s',      D30SDriver);
+registerDriver('d50',       D50Driver);
+registerDriver('q30',       Q30Driver);
+
+// Misc
+registerDriver('a30',       A30Driver);
+registerDriver('lm1600',    LM1600Driver);
+registerDriver('m950',      M950Driver);
+registerDriver('m960',      M960Driver);
 
 // ---------- window.BTPrinter (debug handle) ----------
 
-// Stash references on `window` for debugging. The app stores the
-// currently-active driver here via `BTPrinter.driver = …` after it
-// calls `createDriver`, so a developer can poke at it from DevTools.
 if (typeof window !== 'undefined') {
   window.BTPrinter = {
     // Classes — for ad-hoc instantiation in the console.
     SerialLink,
     ResponseParser,
     Driver,
+    QuinPrinterDriver,
     P780BTDriver,
     // Constants — useful for hex-dumping responses by hand.
+    QUIN_CONSTANTS,
     P780BT_CONSTANTS,
     // Factory / registry.
     createDriver,
@@ -76,4 +129,9 @@ if (typeof window !== 'undefined') {
 }
 
 // Re-export for direct consumers (app.js imports from this file).
-export { SerialLink, ResponseParser, Driver, P780BTDriver, P780BT_CONSTANTS };
+export {
+  SerialLink, ResponseParser,
+  Driver,
+  QuinPrinterDriver, QUIN_CONSTANTS,
+  P780BTDriver, P780BT_CONSTANTS,
+};
