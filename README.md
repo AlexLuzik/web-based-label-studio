@@ -232,9 +232,9 @@ Loaded from public CDNs — no bundler, no `node_modules`:
 
 | Library | Version | Purpose |
 |---|---|---|
-| [Bootstrap](https://getbootstrap.com/) | 5.3.3 | Layout, forms, modals, offcanvas |
-| [Bootstrap Icons](https://icons.getbootstrap.com/) | 1.11.3 | Icon glyphs for UI + the Icon element |
-| [bwip-js](https://github.com/metafloor/bwip-js) | 4.5.0 | Barcode / QR / Data Matrix rasterisation |
+| [Bootstrap](https://getbootstrap.com/) | 5.3.8 | Layout, forms, modals, offcanvas |
+| [Bootstrap Icons](https://icons.getbootstrap.com/) | 1.13.1 | Icon glyphs for UI + the Icon element |
+| [bwip-js](https://github.com/metafloor/bwip-js) | 4.10.1 | Barcode / QR / Data Matrix rasterisation |
 
 ## Known quirks
 

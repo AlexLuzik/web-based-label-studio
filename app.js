@@ -762,7 +762,7 @@ function buildQrPayload(el) {
 }
 
 // Bootstrap Icons — loaded lazily from the CSS so we don't ship a static list.
-const BOOTSTRAP_ICONS_VERSION = '1.11.3';
+const BOOTSTRAP_ICONS_VERSION = '1.13.1';
 const BOOTSTRAP_ICONS_CSS_URL =
   `https://cdn.jsdelivr.net/npm/bootstrap-icons@${BOOTSTRAP_ICONS_VERSION}/font/bootstrap-icons.css`;
 const BOOTSTRAP_ICONS_SVG_BASE =
